@@ -15,25 +15,23 @@ import anndata2ri
 import logging
 
 from rpy2.robjects.packages import importr
-from rpy2.robjects import pandas2ri
-from rpy2.robjects import numpy2ri
-from rpy2.robjects import r
+from rpy2.robjects import r, pandas2ri, numpy2ri
 from scipy.sparse import csc_matrix
 
 sc.settings.verbosity = 0
 rpy2.rinterface_lib.callbacks.logger.setLevel(logging.ERROR)
 
 
-def aggregate_and_filter(
-    adata,
-    cell_identity,
-    sample_key="sample",
+def aggregate_and_filter(adata, cell_identity, obs_to_keep=[]):
+    """
+    """
+    
+    sample_key="sample"
     condition_key="label",
     cell_identity_key="cell_type",
-    obs_to_keep=[],  
-    replicates_per_sample=3,
-    num_cell_per_sample=30
-):
+    num_cell_per_sample = 30
+    replicates_per_sample = 1
+    
     # subset adata to the given cell identity
     adata_cell_pop = adata[adata.obs[cell_identity_key] == cell_identity].copy()
     # check which samples to keep according to the number of cells specified with num_cell_per_sample
@@ -56,7 +54,7 @@ def aggregate_and_filter(
             # create replicates for each sample
             indices = list(adata_sample.obs_names)
             random.shuffle(indices)
-            indices = np.array_split(np.array(indices), replicates_per_patient)
+            indices = np.array_split(np.array(indices), replicates_per_sample)
             for i, rep_idx in enumerate(indices):
                 adata_replicate = adata_sample[rep_idx]
                 # specify how to aggregate: sum gene expression for each gene for each sample and also keep the condition information
@@ -86,6 +84,54 @@ def aggregate_and_filter(
     
     return adata_cell_pop
 
+
+def load_anndata(adata_path, overwrite=False):
+    """
+    """
+
+    adata_pb_path = adata_path.parent.joinpath(f'{adata_path.stem}_pseudobulk.h5ad')
+    
+    if adata_pb_path.exists():
+        adata_pb = sc.read(adata_pb_path)
+    
+    else:
+        adata = sc.read(adata_path)
+        adata.obs['sample'] = adata.obs.apply(lambda x: x['sample'].replace('-','_'), axis=1)
+
+        adata.layers["counts"] = adata.raw.X.copy()
+        sc.pp.filter_cells(adata, min_genes=200)
+        sc.pp.filter_genes(adata, min_cells=3)
+
+        adata.obs["cell_type"] = [ct.replace(" ", "_") for ct in adata.obs["celltypist_cell_label_coarse"]]
+        adata.obs["cell_type"] = [ct.replace("+", "") for ct in adata.obs["celltypist_cell_label_coarse"]]
+        adata.obs["replicate"] = adata.obs.apply(lambda x: x['sample'].split('_')[-1], axis=1)
+        adata.obs["label"] = adata.obs.apply(lambda x: '_'.join(x['sample'].split('_')[:-1]), axis=1)
+
+        adata.obs["replicate"] = adata.obs["replicate"].astype("category")
+        adata.obs["label"] = adata.obs["label"].astype("category")
+        adata.obs["sample"] = adata.obs["sample"].astype("category")
+        adata.obs["cell_type"] = adata.obs["cell_type"].astype("category")
+
+        obs_to_keep = ["label", "cell_type", "replicate", "sample"]
+        adata.X = adata.layers["counts"].copy()
+
+        # process first cell type separately...
+        cell_type = adata.obs["cell_type"].cat.categories[0]
+        print(
+            f'Processing {cell_type} (1 out of {len(adata.obs["cell_type"].cat.categories)})...'
+        )
+        adata_pb = differential.aggregate_and_filter(adata, cell_type, obs_to_keep=obs_to_keep)
+        for i, cell_type in enumerate(adata.obs["cell_type"].cat.categories[1:]):
+
+            print(
+                f'Processing {cell_type} ({i+2} out of {len(adata.obs["cell_type"].cat.categories)})...'
+            )
+            adata_cell_type = differential.aggregate_and_filter(adata, cell_type, obs_to_keep=obs_to_keep)
+            adata_pb = adata_pb.concatenate(adata_cell_type)
+
+        adata_pb.write_h5ad(adata_pb_path)
+
+    return adata_pb
 
 
 def main():
