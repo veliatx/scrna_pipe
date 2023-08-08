@@ -14,9 +14,13 @@ import rpy2.rinterface_lib.callbacks
 import anndata2ri
 import logging
 
-from rpy2.robjects.packages import importr
+from rpy2 import robjects
 from rpy2.robjects import r, pandas2ri, numpy2ri
+from rpy2.robjects.vectors import StrVector, ListVector
+from rpy2.robjects.packages import importr
 from scipy.sparse import csc_matrix
+
+from pathlib import Path
 
 sc.settings.verbosity = 0
 rpy2.rinterface_lib.callbacks.logger.setLevel(logging.ERROR)
@@ -136,8 +140,195 @@ def load_anndata_pseudobulk(adata_path, overwrite=False):
     return adata_pb
 
 
-def main():
+def process_adata_pbmc(adata_pb):
+    """
+    """
+    adata_pb.obs['cell_type'] = adata_pb.obs.apply(lambda x: x.cell_type.replace('_', ''), axis=1)
+    adata_pb.obs['new_index'] = adata_pb.obs.apply(lambda x: x.cell_type + '_' + '_'.join(x.name.split('_')[:-1]), axis=1)
+    adata_pb.obs.set_index('new_index', inplace=True)
+
+    adata_pb.layers['counts'] = adata_pb.X.copy()
+
+    sc.pp.normalize_total(adata_pb, target_sum=1e6)
+    sc.pp.log1p(adata_pb)
+    sc.pp.pca(adata_pb)
+
+    adata_pb.obs["lib_size"] = np.sum(adata_pb.layers["counts"], axis=1)
+    adata_pb.obs["lib_size"] = adata_pb.obs["lib_size"].astype(float)
+    adata_pb.obs["log_lib_size"] = np.log(adata_pb.obs["lib_size"])
+    adata_pb.X = adata_pb.layers['counts'].copy()
+
+    return adata_pb
+
+
+def r_fit_model(adata_pb):
+    """
+    """
+
     importr('edgeR')
+    importr('base')
+    importr('stats')
+    importr('limma')
+    importr('GSVA')
+    
+    fit_model_code = """
+    fit_model <- function(adata_){
+        # create an edgeR object with counts and grouping factor
+        y <- DGEList(assay(adata_, "X"), group = colData(adata_)$label)
+        # filter out genes with low counts
+        print("Dimensions before subsetting:")
+        print(dim(y))
+        print("")
+        keep <- filterByExpr(y)
+        y <- y[keep, , keep.lib.sizes=FALSE]
+        print("Dimensions after subsetting:")
+        print(dim(y))
+        print("")
+        # normalize
+        y <- calcNormFactors(y)
+        # create a vector that is concatentation of condition and cell type that we will later use with contrasts
+        group <- paste0(colData(adata_)$label, ".", colData(adata_)$cell_type)
+        replicate <- colData(adata_)$replicate
+        # create a design matrix: here we have multiple donors so also consider that in the design matrix
+        design <- model.matrix(~ 0 + group + replicate)
+        # estimate dispersion
+        y <- estimateDisp(y, design = design)
+        # fit the model
+        fit <- glmQLFit(y, design)
+        return(list("fit"=fit, "design"=design, "y"=y))
+    }
+    """
+
+    run_model_code = """
+    outs <- fit_model(adata_pb)
+
+    adata_pb_fit <- outs$fit
+    adata_pb_y <- outs$y
+    """
+
+    cpm_model_code = """
+    cpm_df <- edgeR::cpm(adata_pb_y)
+    rownames(cpm_df) <- rownames(adata_pb_y)
+    cpm_py_df <- as.data.frame(cpm_df)
+    """
+
+    r_adata_pb = anndata2ri.py2rpy(adata_pb)
+    robjects.r.assign("adata_pb", r_adata_pb)
+
+    _ = robjects.r(fit_model_code)
+
+    _ = robjects.r(run_model_code)
+
+    _ = robjects.r(cpm_model_code)
+
+    cpm_df = pandas2ri.rpy2py_dataframe(robjects.r['cpm_py_df'])
+
+    return cpm_df
+
+
+def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path):
+    """
+    """
+
+    msig_dir = Path('/home/ec2-user/velia-data-dev/VDC_004_annotation/msigdb/v2023.1_json/')
+
+    pathway_df = pd.read_json(msig_dir.joinpath('c2.cp.v2023.1.Hs.json')).T
+
+    gene_sets = {}
+    for i, row in pathway_df.iterrows():
+        gene_sets[row.name] = StrVector(row.geneSymbols)
+            
+    r_list = ListVector(gene_sets)
+
+    r_list = robjects.r.assign("gene_sets", r_list)
+
+    gsva_code = """
+    gsva_df <- gsva(cpm_df, gene_sets, method='gsva')
+    """
+
+    _ = robjects.r(gsva_code)
+
+    contrast_str = ''
+    contrast_list = []
+
+    all_contrasts = set(['_'.join(x.split('_')[0:-1]) for x in cpm_df.columns])
+    cell_types = set(adata_pb.obs['cell_type'])
+
+    for c1, c2 in focus_contrasts:
+        for cell_type in cell_types:
+            c1_str = f'{cell_type}_{c1}'
+            c2_str = f'{cell_type}_{c2}'
+            if c1_str in all_contrasts and c2_str in all_contrasts:
+                contrast_str += f'"{c1_str}-{c2_str}" = conditions{c1_str} - conditions{c2_str},\n '
+                contrast_list.append(f'"{c1_str}-{c2_str}"')
+                
+    conditions = StrVector(['_'.join(x.split('_')[0:-1]) for x in cpm_df.columns])
+    robjects.r.assign("conditions", conditions)
+
+    # Construct design matrix
+    _ = robjects.r('''
+    design <- model.matrix(~ 0 + conditions)
+    ''')
+
+    # Create contrasts for pairwise comparisons
+    _ = robjects.r(f'''
+    contrast_matrix <- makeContrasts(
+        {contrast_str}
+        levels = design
+    )
+    ''')
+
+    _ = robjects.r(f'''
+    limma_fit <- lmFit(gsva_df, design)
+    limma_fit2 <- contrasts.fit(limma_fit, contrast_matrix)
+    limma_fit2 <- eBayes(limma_fit2)
+    ''')
+
+    con_names = robjects.r('colnames(contrast_matrix)')
+
+    gsva_dfs = {}
+
+    gsva_data_path = adata_path.parent
+
+    for cell_type in cell_types:
+        gsva_dfs[cell_type] = {}
+        for contrast in focus_contrasts:
+            
+            limma_contrast = f'{cell_type}_{contrast[0]}-{cell_type}_{contrast[1]}'
+            
+            if limma_contrast not in con_names: 
+                continue
+
+            _ = robjects.r(f'tt <- topTable(limma_fit2, coef="{limma_contrast}" , n=Inf)')
+
+            df = pandas2ri.rpy2py_dataframe(robjects.r['tt'])
+            gsva_dfs[cell_type][limma_contrast] = df
+            
+            gsva_file_name = f'{adata_path.stem}_gsva_{contrast[0]}-{contrast[1]}_{cell_type}.csv'
+
+            df.to_csv(gsva_data_path.joinpath('gsva', gsva_file_name))
+
+    return gsva_dfs
+
+
+def load_gsva_dfs(adata_path):
+    """
+    """
+    pass
+
+
+def main():
+    """
+    """
+
+    adata_pb = load_anndata_pseudobulk(adata_path, overwrite=False)
+
+    adata_pb = process_adata_pbmc(adata_pb)
+
+    r_adata_pb = anndata2ri.py2rpy(adata_pb)
+    robjects.r.assign("adata_pb", r_adata_pb)
+
+
 
 
 if __name__ == "__main__":
