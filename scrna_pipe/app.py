@@ -36,27 +36,62 @@ def load_differential_dfs(adata_path):
 
 
 output_dir = Path('/home/ec2-user/velia-analyses-dev/VAP_20230711_single_cell_moa')
-adata_path = output_dir.joinpath('outputs', 'run_5', 'analysis', 'pbmc_5hr.h5ad')
+adata_paths = {
+    'PBMC 5hr': output_dir.joinpath('outputs', 'run_5', 'analysis', 'pbmc_5hr.h5ad'),
+    'PBMC 24hr': output_dir.joinpath('outputs', 'run_6', 'analysis', 'PBMC_24hr.h5ad'),
+    'HCT116': output_dir.joinpath('outputs', 'run_5', 'analysis', 'HCT116.h5ad'),
+    'A549': output_dir.joinpath('outputs', 'run_5', 'analysis', 'A549.h5ad'),
+}
 
-focus_contrasts = [
-    ('None', 'None'),
-    ('PBMC_5hr_LPS', 'PBMC_5hr_Mock'),
-    ('PBMC_5hr_sORF2184_0', 'PBMC_5hr_Mock'), 
-    ('PBMC_5hr_sORF2341_0', 'PBMC_5hr_Mock'),
-    ('PBMC_5hr_LPS_sORF2184_0', 'PBMC_5hr_LPS'),
-    ('PBMC_5hr_LPS_sORF2341_0', 'PBMC_5hr_LPS'),
-    ('PBMC_5hr_sORF2341_0', 'PBMC_5hr_sORF2184_0'),
-    ('PBMC_5hr_LPS_sORF2341_0', 'PBMC_5hr_LPS_sORF2184_0'),
-]
+focus_contrasts = {
+    'PBMC 5hr': [
+        ('None', 'None'),
+        ('PBMC_5hr_LPS', 'PBMC_5hr_Mock'),
+        ('PBMC_5hr_sORF2184_0', 'PBMC_5hr_Mock'), 
+        ('PBMC_5hr_sORF2341_0', 'PBMC_5hr_Mock'),
+        ('PBMC_5hr_LPS_sORF2184_0', 'PBMC_5hr_LPS'),
+        ('PBMC_5hr_LPS_sORF2341_0', 'PBMC_5hr_LPS'),
+        ('PBMC_5hr_sORF2341_0', 'PBMC_5hr_sORF2184_0'),
+        ('PBMC_5hr_LPS_sORF2341_0', 'PBMC_5hr_LPS_sORF2184_0'),
+    ],
+    'PBMC 24hr': [
+        ('PBMC_24hr_LPS', 'PBMC_24hr_Mock'),
+        ('PBMC_24hr_sORF2184_0', 'PBMC_24hr_Mock'), 
+        ('PBMC_24hr_sORF2341_0', 'PBMC_24hr_Mock'),
+        ('PBMC_24hr_LPS_sORF2184_0', 'PBMC_24hr_LPS'),
+        ('PBMC_24hr_LPS_sORF2341_0', 'PBMC_24hr_LPS'),
+        ('PBMC_24hr_sORF2341_0', 'PBMC_24hr_sORF2184_0'),
+        ('PBMC_24hr_LPS_sORF2341_0', 'PBMC_24hr_LPS_sORF2184_0'),
+        ('PBMC_24hr_LPS_sORF2406', 'PBMC_24hr_LPS'),
+    ],
+    'HCT116': [
+        ('HCT116_BAX', 'HCT116_HiBit'),
+        ('HCT116_VTX0839468', 'HCT116_HiBit'), 
+        ('HCT116_VTX0850636', 'HCT116_HiBit'),
+    ],
+    'A549': [
+        ('A549_BAX', 'A549_HiBit'),
+        ('A549_VTX0518494', 'A549_HiBit'), 
+    ]
+}
 
-adata, adata_dim, adata_pb = load_anndata(adata_path)
-gsva_dfs = load_differential_dfs(adata_path)
 
-cell_types = list(set(adata.obs['cell_type']))
-cell_types.sort()
-cell_types.insert(0, 'All')
+
+datasets = ['PBMC 5hr', 'PBMC 24hr', 'A549', 'HCT116']
 
 with st.sidebar:
+
+    dataset = st.selectbox(
+        'Choose a dataset',
+        datasets, index=0,
+    )
+    adata, adata_dim, adata_pb = load_anndata(adata_paths[dataset])
+    
+    st.divider()
+
+    cell_types = list(set(adata.obs['cell_type']))
+    cell_types.sort()
+    cell_types.insert(0, 'All')
 
     cell_type = st.selectbox(
         'Choose a cell type',
@@ -67,8 +102,11 @@ with st.sidebar:
 
     contrast = st.selectbox(
         'Choose a contrast',
-        [f'{x[0]} - {x[1]}' for x in focus_contrasts]
+        [f'{x[0]} - {x[1]}' for x in focus_contrasts[dataset]]
     )
+
+
+gsva_dfs = load_differential_dfs(adata_paths[dataset])
 
 color_map =  {
     "Macrophages": "#1f77b4",  
@@ -76,7 +114,10 @@ color_map =  {
     "T cells": "#2ca02c", 
     "Monocytes":  "#d62728",  
     "pDC": "#9467bd", 
-    "ILC": "#8c564b", 
+    "ILC": "#8c564b",
+    "DC": "#e377c2",
+    "Endothelial cells": "#7f7f7f",
+    "Plasma cells": "#bcbd22"
 }
 
 if cell_type and cell_type != 'All':
@@ -88,7 +129,6 @@ plot_df = pd.DataFrame(adata_dim.obsm['X_umap'])
 cell_df = pd.DataFrame(adata_dim.obs['cell_type'])
 cell_df.reset_index(inplace=True)
 plot_df = pd.concat([plot_df, cell_df], axis=1)
-
 
 with st.expander(label='Cell Annotation', expanded=True):
     fig = px.scatter(plot_df, x=0, y=1, opacity=0.5,
@@ -104,28 +144,30 @@ with st.expander(label='Cell Annotation', expanded=True):
 with st.expander(label='Differential Expression', expanded=True):
     if cell_type != 'All' and contrast != 'None - None':
         cell_type = cell_type.replace(' ', '')
-        contrast_map = {f'{x[0]} - {x[1]}': f'{x[0]}-{x[1]}' for x in focus_contrasts}
-        key = f'{adata_path.stem}_gsva_{contrast_map[contrast]}_{cell_type}'
+        contrast_map = {f'{x[0]} - {x[1]}': f'{x[0]}-{x[1]}' for x in focus_contrasts[dataset]}
+        key = f'{adata_paths[dataset].stem}_gsva_{contrast_map[contrast]}_{cell_type}'
+        if key in gsva_dfs.keys():
 
+            plot_df = gsva_dfs[key]
+            plot_df.rename(columns={'Unnamed: 0': 'Pathway'}, inplace=True)
+            plot_df['-Log10(FDR)'] = -1*np.log10(plot_df['adj.P.Val'])
+            plot_df['significant'] = plot_df.apply(lambda x: x['adj.P.Val'] < .05, axis=1)
 
-        plot_df = gsva_dfs[key]
-        plot_df.rename(columns={'Unnamed: 0': 'Pathway'}, inplace=True)
-        plot_df['-Log10(FDR)'] = -1*np.log10(plot_df['adj.P.Val'])
-        plot_df['significant'] = plot_df.apply(lambda x: x['adj.P.Val'] < .05, axis=1)
+            plot_df['FDR'] = plot_df['adj.P.Val'].astype(float)
 
-        plot_df['FDR'] = plot_df['adj.P.Val'].astype(float)
+            alt.data_transformers.disable_max_rows()
 
-        alt.data_transformers.disable_max_rows()
+            col1, col2 = st.columns(2)
 
-        col1, col2 = st.columns(2)
+            with col1:
+                st.altair_chart(alt.Chart(plot_df).mark_circle(size=60).encode(
+                    x='logFC',
+                    y='-Log10(FDR)',
+                    color='significant',
+                    tooltip=['Pathway', 'FDR', 'logFC']
+                ), use_container_width=True)
 
-        with col1:
-            st.altair_chart(alt.Chart(plot_df).mark_circle(size=60).encode(
-                x='logFC',
-                y='-Log10(FDR)',
-                color='significant',
-                tooltip=['Pathway', 'FDR', 'logFC']
-            ))
-
-        with col2:
-            st.dataframe(plot_df[plot_df['significant']].sort_values(by='FDR'))
+            with col2:
+                st.dataframe(plot_df[plot_df['significant']].sort_values(by='FDR'))
+        else:
+            st.write('Not enough cells to perform differential analysis.')

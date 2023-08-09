@@ -161,6 +161,26 @@ def process_adata_pbmc(adata_pb):
     return adata_pb
 
 
+def process_adata_cancer(adata_pb):
+    """
+    """
+    adata_pb.obs['cell_type'] = adata_pb.obs.apply(lambda x: x.cell_type.replace('_', ''), axis=1)
+
+    adata_pb.obs.index.name = 'new_index'
+    adata_pb.layers['counts'] = adata_pb.X.copy()
+
+    sc.pp.normalize_total(adata_pb, target_sum=1e6)
+    sc.pp.log1p(adata_pb)
+    sc.pp.pca(adata_pb)
+
+    adata_pb.obs["lib_size"] = np.sum(adata_pb.layers["counts"], axis=1)
+    adata_pb.obs["lib_size"] = adata_pb.obs["lib_size"].astype(float)
+    adata_pb.obs["log_lib_size"] = np.log(adata_pb.obs["lib_size"])
+    adata_pb.X = adata_pb.layers['counts'].copy()
+
+    return adata_pb
+
+
 def r_fit_model(adata_pb):
     """
     """
@@ -226,10 +246,9 @@ def r_fit_model(adata_pb):
     return cpm_df
 
 
-def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path):
+def load_gene_set():
     """
     """
-
     msig_dir = Path('/home/ec2-user/velia-data-dev/VDC_004_annotation/msigdb/v2023.1_json/')
 
     pathway_df = pd.read_json(msig_dir.joinpath('c2.cp.v2023.1.Hs.json')).T
@@ -237,6 +256,13 @@ def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path):
     gene_sets = {}
     for i, row in pathway_df.iterrows():
         gene_sets[row.name] = StrVector(row.geneSymbols)
+
+    return gene_sets
+
+
+def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path, gene_sets):
+    """
+    """
             
     r_list = ListVector(gene_sets)
 
