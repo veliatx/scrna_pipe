@@ -337,6 +337,69 @@ def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path, gene_sets):
     return gsva_dfs
 
 
+def r_run_edger(adata_pb, focus_contrasts, adata_path):
+    """
+    """
+            
+    fit_cols = robjects.r('fit_cols <- colnames(adata_pb_fit)')
+
+    contrast_str = ''
+    contrast_map = {}
+    cell_types = set(adata_pb.obs['cell_type'])
+    cons_fine = [x[5:] for x in fit_cols]
+
+    for c1, c2 in focus_contrasts:
+
+        for cell_type in cell_types:
+            c1_str = f'{c1}.{cell_type}'
+            c2_str = f'{c2}.{cell_type}'
+            if c1_str in cons_fine and c2_str in cons_fine:
+                contrast_str += f'"{c1_str}-{c2_str}" = fit_colsgroup{c1_str} - fit_colsgroup{c2_str},\n '
+                contrast_map[f"{c1_str}-{c2_str}"] = f"group{c1_str} - group{c2_str}"
+            
+
+    # Construct design matrix
+    _ = robjects.r('''
+    design_gene <- model.matrix(~ 0 + fit_cols)
+    ''')
+
+    # Create contrasts for pairwise comparisons
+    _ = robjects.r(f'''
+    contrast_matrix_gene <- makeContrasts(
+        {contrast_str}
+        levels = design_gene
+    )
+    ''')
+
+    edgeR_dfs = {}
+
+    for contrast_name, contrast in contrast_map.items():
+
+        edgeR_code = f"""
+
+        contrast2 <- makeContrasts("{contrast}", levels=colnames(adata_pb_fit$design))
+
+        qlf <- glmQLFTest(adata_pb_fit, contrast=contrast2)
+        tt_gene <- topTags(qlf, n = Inf)
+        tt_table = tt_gene$table
+        """
+        _ = robjects.r(edgeR_code)
+
+        df = pandas2ri.rpy2py_dataframe(robjects.r['tt_table'])
+        
+        edgeR_dfs[contrast_name] = df
+        
+        edgeR_file_name = f'{adata_path.stem}_edgeR_{contrast_name}.csv'
+
+        outpath = adata_path.parent.joinpath('edgeR')
+        if not outpath.exists():
+            outpath.mkdir()
+
+        df.to_csv(outpath.joinpath('edgeR_file_name'))
+    
+    return edgeR_dfs
+
+
 def load_gsva_dfs(adata_path):
     """
     """

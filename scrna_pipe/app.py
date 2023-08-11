@@ -117,7 +117,8 @@ color_map =  {
     "ILC": "#8c564b",
     "DC": "#e377c2",
     "Endothelial cells": "#7f7f7f",
-    "Plasma cells": "#bcbd22"
+    "Plasma cells": "#bcbd22",
+    "cluster_0": "#1f77b4",
 }
 
 if cell_type and cell_type != 'All':
@@ -138,6 +139,8 @@ with st.expander(label='Cell Annotation', expanded=True):
                         "1": "UMAP 1",
                     },)
 
+    fig.update_layout(legend_font=dict(size=24))
+
     st.plotly_chart(fig, theme="streamlit")
 
 
@@ -145,7 +148,9 @@ with st.expander(label='Differential Expression', expanded=True):
     if cell_type != 'All' and contrast != 'None - None':
         cell_type = cell_type.replace(' ', '')
         contrast_map = {f'{x[0]} - {x[1]}': f'{x[0]}-{x[1]}' for x in focus_contrasts[dataset]}
-        key = f'{adata_paths[dataset].stem}_gsva_{contrast_map[contrast]}_{cell_type}'
+        key = f'{adata_paths[dataset].stem}_gsva_{contrast_map[contrast]}_{cell_type.replace("_", "")}'
+        #st.write(gsva_dfs.keys())
+        #st.write(key)
         if key in gsva_dfs.keys():
 
             plot_df = gsva_dfs[key]
