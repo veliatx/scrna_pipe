@@ -315,7 +315,8 @@ def r_run_edger(adata_pb, focus_contrasts, adata_path):
         df['FDR'] = df['FDR'].astype(float)
         df['-Log10(FDR)'] = -1*np.log10(df['FDR'])
         df['Significant'] = df.apply(lambda x: x['FDR'] < .05, axis=1)
-        
+        df['point_size'] = 10
+
         edgeR_dfs[contrast_name] = df
         
         edgeR_file_name = f'{adata_path.stem}__edgeR__{contrast_name}.csv'
@@ -329,7 +330,7 @@ def r_run_edger(adata_pb, focus_contrasts, adata_path):
     return edgeR_dfs
 
 
-def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path, gene_sets, pathway_df):
+def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path, gene_sets, pathway_df, de_gene_tables):
     """
     """
             
@@ -348,7 +349,6 @@ def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path, gene_sets, pathway
 
     all_contrasts = set(['_'.join(x.split('_')[0:-1]) for x in cpm_df.columns])
     cell_types = set(adata_pb.obs['cell_type'])
-
 
 
     for c1, c2 in focus_contrasts:
@@ -404,14 +404,30 @@ def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path, gene_sets, pathway
             df['FDR'] = df['adj.P.Val'].astype(float)
             df['-Log10(FDR)'] = -1*np.log10(df['FDR'])
             df['Significant'] = df.apply(lambda x: x['FDR'] < .05, axis=1)
+            df['point_size'] = 10
 
             contrast_name = f'{contrast[0]}-{contrast[1]}__{cell_type}'
 
-            gsva_dfs[contrast_name] = df
+            df = df.merge(pathway_df, right_index=True, left_on='Pathway')
+            path_table_df = df[['Pathway', 'FDR', '-Log10(FDR)', 'logFC', 'geneSymbols', 'point_size', 'Significant', 'msigdbURL']].copy()
+            
+            plot_gene_df = de_gene_tables[contrast_name]
+            de_genes = set(plot_gene_df[plot_gene_df['Significant']]['gene'])
+
+            intersection_genes_list = []
+            for i, row in path_table_df.iterrows():
+                intersection_genes_list.append(list(set(row.geneSymbols).intersection(de_genes)))
+                
+            path_table_df['leading_edge'] = intersection_genes_list
+
+            path_table_df['DE Genes In Pathway'] = path_table_df.apply(lambda x: len(x.leading_edge), axis=1)
+            path_table_df['Total Genes In Pathway'] = path_table_df.apply(lambda x: len(x.geneSymbols), axis=1)
+
+            gsva_dfs[contrast_name] = path_table_df
             
             gsva_file_name = f'{adata_path.stem}__gsva__{contrast_name}.csv'
 
-            df.to_csv(gsva_data_path.joinpath('gsva', gsva_file_name))
+            path_table_df.to_csv(gsva_data_path.joinpath('gsva', gsva_file_name))
 
     return gsva_dfs
 

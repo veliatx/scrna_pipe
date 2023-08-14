@@ -1,5 +1,6 @@
 import altair as alt
 import streamlit as st
+import seaborn as sns
 import pandas as pd
 import numpy as np
 import scanpy as sc
@@ -49,8 +50,8 @@ output_dir = Path('/home/ec2-user/velia-analyses-dev/VAP_20230711_single_cell_mo
 adata_paths = {
     'PBMC 5hr': output_dir.joinpath('outputs', 'run_6', 'analysis', 'PBMC_5hr.h5ad'),
     'PBMC 24hr': output_dir.joinpath('outputs', 'run_6', 'analysis', 'PBMC_24hr.h5ad'),
-    'HCT116': output_dir.joinpath('outputs', 'run_5', 'analysis', 'HCT116.h5ad'),
-    'A549': output_dir.joinpath('outputs', 'run_5', 'analysis', 'A549.h5ad'),
+    #'HCT116': output_dir.joinpath('outputs', 'run_5', 'analysis', 'HCT116.h5ad'),
+    #'A549': output_dir.joinpath('outputs', 'run_5', 'analysis', 'A549.h5ad'),
 }
 
 focus_contrasts = {
@@ -82,11 +83,11 @@ focus_contrasts = {
     'A549': [
         ('A549_BAX', 'A549_HiBit'),
         ('A549_VTX0518494', 'A549_HiBit'), 
-    ]
+   ]
 }
 
 
-datasets = ['PBMC 5hr', 'PBMC 24hr', 'A549', 'HCT116']
+datasets = ['PBMC 5hr', 'PBMC 24hr']#, 'A549', 'HCT116']
 
 with st.sidebar:
 
@@ -225,7 +226,9 @@ with st.expander(label='Differential Expression', expanded=True):
                         frameon=False,
                         sort_order=False,
                         wspace=1,
-                        return_fig=True
+                        return_fig=True,
+                        vcenter='p20',
+                        cmap='viridis'
 
                     )
 
@@ -241,7 +244,9 @@ with st.expander(label='Differential Expression', expanded=True):
                         frameon=False,
                         sort_order=False,
                         wspace=1,
-                        return_fig=True
+                        return_fig=True,
+                        vcenter='p20',
+                        cmap='viridis'
 
                     )
 
@@ -269,10 +274,11 @@ with st.expander(label='Differential Expression', expanded=True):
 
             with col4:
                 st.subheader('Pathway DE Table')
-
+                pathway_cols = ['Pathway', 'FDR', 'leading_edge', 'DE Genes In Pathway', 
+                                'Total Genes In Pathway', '-Log10(FDR)', 'logFC', 'msigdbURL']
                 sig_df = plot_gsva_df[plot_gsva_df['Significant']].sort_values(by='FDR')
-                st.dataframe(sig_df)
-                csv = convert_df(sig_df)
+                st.dataframe(sig_df[pathway_cols])
+                csv = convert_df(sig_df[pathway_cols])
                 st.download_button(
                     "Download Table",
                     csv,
@@ -280,7 +286,6 @@ with st.expander(label='Differential Expression', expanded=True):
                     "text/csv",
                     key='download-csv-pathway'
                 )
-
 
         else:
             st.write('Not enough cells to perform differential analysis.')
