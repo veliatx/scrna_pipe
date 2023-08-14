@@ -8,6 +8,7 @@ from pathlib import Path
 from scrna_pipe import differential
 from streamlit_echarts import st_echarts
 from streamlit_plotly_events import plotly_events
+
 import plotly.express as px
 
 st.set_page_config(layout="wide")
@@ -28,16 +29,25 @@ def load_anndata(adata_path):
 
 @st.cache_data
 def load_differential_dfs(adata_path):
-    gsva_dfs = {}
-    for df_path in adata_path.parent.joinpath('gsva').glob('*.csv'):
-        gsva_dfs[df_path.stem] = pd.read_csv(df_path) 
+    gene_de_dfs = {}
+    gsva_de_dfs = {}
 
-    return gsva_dfs
+    for df_path in adata_path.parent.joinpath('edgeR').glob('*.csv'):
+        gene_de_dfs[df_path.stem] = pd.read_csv(df_path, index_col=0) 
+
+    for df_path in adata_path.parent.joinpath('gsva').glob('*.csv'):
+        gsva_de_dfs[df_path.stem] = pd.read_csv(df_path, index_col=0) 
+
+    return gene_de_dfs, gsva_de_dfs
+
+
+def convert_df(df):
+   return df.to_csv(index=False).encode('utf-8')
 
 
 output_dir = Path('/home/ec2-user/velia-analyses-dev/VAP_20230711_single_cell_moa')
 adata_paths = {
-    'PBMC 5hr': output_dir.joinpath('outputs', 'run_5', 'analysis', 'pbmc_5hr.h5ad'),
+    'PBMC 5hr': output_dir.joinpath('outputs', 'run_6', 'analysis', 'PBMC_5hr.h5ad'),
     'PBMC 24hr': output_dir.joinpath('outputs', 'run_6', 'analysis', 'PBMC_24hr.h5ad'),
     'HCT116': output_dir.joinpath('outputs', 'run_5', 'analysis', 'HCT116.h5ad'),
     'A549': output_dir.joinpath('outputs', 'run_5', 'analysis', 'A549.h5ad'),
@@ -76,7 +86,6 @@ focus_contrasts = {
 }
 
 
-
 datasets = ['PBMC 5hr', 'PBMC 24hr', 'A549', 'HCT116']
 
 with st.sidebar:
@@ -106,7 +115,7 @@ with st.sidebar:
     )
 
 
-gsva_dfs = load_differential_dfs(adata_paths[dataset])
+gene_de_dfs, gsva_de_dfs = load_differential_dfs(adata_paths[dataset])
 
 color_map =  {
     "Macrophages": "#1f77b4",  
@@ -148,31 +157,130 @@ with st.expander(label='Differential Expression', expanded=True):
     if cell_type != 'All' and contrast != 'None - None':
         cell_type = cell_type.replace(' ', '')
         contrast_map = {f'{x[0]} - {x[1]}': f'{x[0]}-{x[1]}' for x in focus_contrasts[dataset]}
-        key = f'{adata_paths[dataset].stem}_gsva_{contrast_map[contrast]}_{cell_type.replace("_", "")}'
-        #st.write(gsva_dfs.keys())
-        #st.write(key)
-        if key in gsva_dfs.keys():
+        
+        gsva_key = f'{adata_paths[dataset].stem}__gsva__{contrast_map[contrast]}__{cell_type.replace("_", "")}'
+        edger_key = f'{adata_paths[dataset].stem}__edgeR__{contrast_map[contrast]}__{cell_type.replace("_", "")}'
+        
+        st.write(edger_key)
+        if gsva_key in gsva_de_dfs.keys():
 
-            plot_df = gsva_dfs[key]
-            plot_df.rename(columns={'Unnamed: 0': 'Pathway'}, inplace=True)
-            plot_df['-Log10(FDR)'] = -1*np.log10(plot_df['adj.P.Val'])
-            plot_df['significant'] = plot_df.apply(lambda x: x['adj.P.Val'] < .05, axis=1)
+            plot_gene_df = gene_de_dfs[edger_key]
+            plot_gene_df['point_size'] = 10
 
-            plot_df['FDR'] = plot_df['adj.P.Val'].astype(float)
+            plot_gsva_df = gsva_de_dfs[gsva_key]
+            plot_gsva_df['point_size'] = 10
 
-            alt.data_transformers.disable_max_rows()
-
+                        
             col1, col2 = st.columns(2)
 
             with col1:
-                st.altair_chart(alt.Chart(plot_df).mark_circle(size=60).encode(
-                    x='logFC',
-                    y='-Log10(FDR)',
-                    color='significant',
-                    tooltip=['Pathway', 'FDR', 'logFC']
-                ), use_container_width=True)
+                st.subheader('Gene Volcano Plot')
+
+                fig = px.scatter(plot_gene_df, x='logFC', y='-Log10(FDR)', opacity=0.5,
+                                 color="Significant", size='point_size', size_max=10, template='plotly_white',
+                                 labels={"logFC": "Log2(FoldChange)"},
+                                 hover_data=['gene'])
+
+                fig.update_layout(legend_font=dict(size=18))
+                
+                selected_points = plotly_events(fig)
+
 
             with col2:
-                st.dataframe(plot_df[plot_df['significant']].sort_values(by='FDR'))
+                st.subheader('Gene DE Table')
+
+                sig_df = plot_gene_df[plot_gene_df['Significant']].sort_values(by='FDR')
+                st.dataframe(sig_df)
+                csv = convert_df(sig_df)
+                st.download_button(
+                    "Download Table",
+                    csv,
+                    f"gene_{edger_key}.csv",
+                    "text/csv",
+                    key='download-csv-gene'
+                )
+
+
+            if selected_points:
+                st.subheader('UMAP projection of selected gene')
+
+                gene = plot_gene_df.loc[selected_points[0]["pointIndex"]]['gene']
+
+                dataset, _, contrast, cell_type = edger_key.split('__')
+                c1, c2 = contrast.split('-')
+
+                c1 = c1.replace('_', '-')
+                c2 = c2.replace('_', '-')
+
+                samples1 = [f'{c1}-{i}' for i in range(1, 4)]
+                samples2 = [f'{c2}-{i}' for i in range(1, 4)]
+
+                col5, col6 = st.columns(2)
+
+                with col5:
+                    st.write(c1)
+                    ax1 = sc.pl.umap(
+                        adata_dim[adata_dim.obs['sample'].isin(samples1)],
+                        color=[gene],
+                        frameon=False,
+                        sort_order=False,
+                        wspace=1,
+                        return_fig=True
+
+                    )
+
+                    st.pyplot(ax1)
+
+                    st.write(gene)
+
+                with col6:
+                    st.write(c2)
+                    ax2 = sc.pl.umap(
+                        adata_dim[adata_dim.obs['sample'].isin(samples2)],
+                        color=[gene],
+                        frameon=False,
+                        sort_order=False,
+                        wspace=1,
+                        return_fig=True
+
+                    )
+
+                    st.pyplot(ax2)
+
+                    st.write(gene) 
+
+            #st.write(plot_gene_df.loc[selected_points["pointIndex"]])
+
+
+            st.divider()
+
+            col3, col4 = st.columns(2)
+
+            with col3:
+                st.subheader('Pathway Volcano Plot')
+                fig = px.scatter(plot_gsva_df, x='logFC', y='-Log10(FDR)', opacity=0.5,
+                                 color="Significant", size='point_size', size_max=10, template='plotly_white',
+                                 labels={"logFC": "Log2(FoldChange)"},
+                                 hover_data=['Pathway'])
+
+                fig.update_layout(legend_font=dict(size=18))
+                st.plotly_chart(fig, theme="streamlit")
+
+
+            with col4:
+                st.subheader('Pathway DE Table')
+
+                sig_df = plot_gsva_df[plot_gsva_df['Significant']].sort_values(by='FDR')
+                st.dataframe(sig_df)
+                csv = convert_df(sig_df)
+                st.download_button(
+                    "Download Table",
+                    csv,
+                    f"pathways_{gsva_key}.csv",
+                    "text/csv",
+                    key='download-csv-pathway'
+                )
+
+
         else:
             st.write('Not enough cells to perform differential analysis.')
