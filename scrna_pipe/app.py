@@ -46,10 +46,10 @@ def convert_df(df):
    return df.to_csv(index=False).encode('utf-8')
 
 
-output_dir = Path('/home/ec2-user/velia-analyses-dev/VAP_20230711_single_cell_moa')
+output_dir = Path('/home/ubuntu/scrna_pipe/data')
 adata_paths = {
-    'PBMC 5hr': output_dir.joinpath('outputs', 'run_6', 'analysis', 'PBMC_5hr.h5ad'),
-    'PBMC 24hr': output_dir.joinpath('outputs', 'run_6', 'analysis', 'PBMC_24hr.h5ad'),
+    'PBMC 5hr': output_dir.joinpath('analysis', 'PBMC_5hr.h5ad'),
+    'PBMC 24hr': output_dir.joinpath('analysis', 'PBMC_24hr.h5ad'),
     #'HCT116': output_dir.joinpath('outputs', 'run_5', 'analysis', 'HCT116.h5ad'),
     #'A549': output_dir.joinpath('outputs', 'run_5', 'analysis', 'A549.h5ad'),
 }
@@ -218,6 +218,12 @@ with st.expander(label='Differential Expression', expanded=True):
 
                 col5, col6 = st.columns(2)
 
+                try:
+                    gene_idx = adata_dim.var.index.get_loc(gene)
+                    max_val = np.percentile(adata_dim.X[:, gene_idx], q=98)
+                except:
+                    max_val = 5
+
                 with col5:
                     st.write(c1)
                     ax1 = sc.pl.umap(
@@ -227,7 +233,8 @@ with st.expander(label='Differential Expression', expanded=True):
                         sort_order=False,
                         wspace=1,
                         return_fig=True,
-                        vcenter='p20',
+                        vmin=0.1,
+                        vmax=max_val,
                         cmap='viridis'
 
                     )
@@ -245,7 +252,8 @@ with st.expander(label='Differential Expression', expanded=True):
                         sort_order=False,
                         wspace=1,
                         return_fig=True,
-                        vcenter='p20',
+                        vmin=0.1,
+                        vmax=max_val,
                         cmap='viridis'
 
                     )
@@ -269,7 +277,9 @@ with st.expander(label='Differential Expression', expanded=True):
                                  hover_data=['Pathway'])
 
                 fig.update_layout(legend_font=dict(size=18))
-                st.plotly_chart(fig, theme="streamlit")
+                selected_pathway = plotly_events(fig)
+
+                #st.plotly_chart(fig, theme="streamlit")
 
 
             with col4:
