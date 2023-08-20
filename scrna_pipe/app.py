@@ -12,6 +12,8 @@ from streamlit_plotly_events import plotly_events
 
 import plotly.express as px
 
+from scrna_pipe import plotting
+
 st.set_page_config(layout="wide")
 
 
@@ -46,7 +48,9 @@ def convert_df(df):
    return df.to_csv(index=False).encode('utf-8')
 
 
-output_dir = Path('/home/ubuntu/scrna_pipe/data')
+#output_dir = Path('/home/ubuntu/scrna_pipe/data')
+output_dir = Path('/home/ec2-user/scrna_pipe/data')
+
 adata_paths = {
     'PBMC 5hr': output_dir.joinpath('analysis', 'PBMC_5hr.h5ad'),
     'PBMC 24hr': output_dir.joinpath('analysis', 'PBMC_24hr.h5ad'),
@@ -189,10 +193,14 @@ with st.expander(label='Differential Expression', expanded=True):
 
             with col2:
                 st.subheader('Gene DE Table')
+                gene_cols = ['gene', 'logFC', 'FDR', 'logCPM', 
+                             'PValue', '-Log10(FDR)', 'F']
+
 
                 sig_df = plot_gene_df[plot_gene_df['Significant']].sort_values(by='FDR')
-                st.dataframe(sig_df)
-                csv = convert_df(sig_df)
+                st.dataframe(sig_df[gene_cols].style.format({"FDR": "{:.2E}", "PValue": "{:.2E}"}))
+                csv = convert_df(sig_df[gene_cols])
+
                 st.download_button(
                     "Download Table",
                     csv,
@@ -216,7 +224,7 @@ with st.expander(label='Differential Expression', expanded=True):
                 samples1 = [f'{c1}-{i}' for i in range(1, 4)]
                 samples2 = [f'{c2}-{i}' for i in range(1, 4)]
 
-                col5, col6 = st.columns(2)
+                col3, col4 = st.columns(2)
 
                 try:
                     gene_idx = adata_dim.var.index.get_loc(gene)
@@ -224,7 +232,7 @@ with st.expander(label='Differential Expression', expanded=True):
                 except:
                     max_val = 5
 
-                with col5:
+                with col3:
                     st.write(c1)
                     ax1 = sc.pl.umap(
                         adata_dim[adata_dim.obs['sample'].isin(samples1)],
@@ -243,7 +251,7 @@ with st.expander(label='Differential Expression', expanded=True):
 
                     st.write(gene)
 
-                with col6:
+                with col4:
                     st.write(c2)
                     ax2 = sc.pl.umap(
                         adata_dim[adata_dim.obs['sample'].isin(samples2)],
@@ -262,14 +270,35 @@ with st.expander(label='Differential Expression', expanded=True):
 
                     st.write(gene) 
 
-            #st.write(plot_gene_df.loc[selected_points["pointIndex"]])
+
+            string_button = st.button('Generate STRING network diagrams')
+
+            colx, coly, colz = st.columns(3)
+
+            
+            if string_button:
+                with colx:
+                    st.write('STRING network of top up-regulated genes')
+                    network_image = plotting.plot_string_network(list(sig_df[sig_df['logFC'] > 0]['gene'])[0:100])
+                    st.image(network_image)
+
+                with coly:
+                    st.write('STRING network of top down-regulated genes')
+                    network_image = plotting.plot_string_network(list(sig_df[sig_df['logFC'] < 0]['gene'])[0:100])
+                    st.image(network_image)
+
+                with colz:
+                    st.write('STRING network of top regulated genes')
+                    network_image = plotting.plot_string_network(list(sig_df['gene'])[0:100])
+                    st.image(network_image)
+
 
 
             st.divider()
 
-            col3, col4 = st.columns(2)
+            col5, col6 = st.columns(2)
 
-            with col3:
+            with col5:
                 st.subheader('Pathway Volcano Plot')
                 fig = px.scatter(plot_gsva_df, x='logFC', y='-Log10(FDR)', opacity=0.5,
                                  color="Significant", size='point_size', size_max=10, template='plotly_white',
@@ -282,12 +311,12 @@ with st.expander(label='Differential Expression', expanded=True):
                 #st.plotly_chart(fig, theme="streamlit")
 
 
-            with col4:
+            with col6:
                 st.subheader('Pathway DE Table')
                 pathway_cols = ['Pathway', 'FDR', 'leading_edge', 'DE Genes In Pathway', 
                                 'Total Genes In Pathway', '-Log10(FDR)', 'logFC', 'msigdbURL']
                 sig_df = plot_gsva_df[plot_gsva_df['Significant']].sort_values(by='FDR')
-                st.dataframe(sig_df[pathway_cols])
+                st.dataframe(sig_df[pathway_cols].style.format({"FDR": "{:.2E}"}))
                 csv = convert_df(sig_df[pathway_cols])
                 st.download_button(
                     "Download Table",
