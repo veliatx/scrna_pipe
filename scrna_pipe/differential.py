@@ -432,9 +432,6 @@ def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path, gene_sets, pathway
     return gsva_dfs
 
 
-
-
-
 def load_gsva_dfs(adata_path):
     """
     """
@@ -445,14 +442,82 @@ def main():
     """
     """
 
+    output_dir = Path('/home/ec2-user/velia-analyses-dev/VAP_20230711_single_cell_moa/outputs/run_6/')
+    sample_name = 'PBMC_fine'
+    #sample_name = 'pbmc_5hr'
+
+    adata_path = output_dir.joinpath('analysis', f'{sample_name}.h5ad')
+
     adata_pb = load_anndata_pseudobulk(adata_path, overwrite=False)
 
     adata_pb = process_adata_pbmc(adata_pb)
 
-    r_adata_pb = anndata2ri.py2rpy(adata_pb)
-    robjects.r.assign("adata_pb", r_adata_pb)
+    cpm_df = r_fit_model(adata_pb)
 
+    all_focus_contrasts = {
+        'PBMC 5hr': [
+            ('None', 'None'),
+            ('PBMC_5hr_LPS', 'PBMC_5hr_Mock'),
+            ('PBMC_5hr_sORF2184_0', 'PBMC_5hr_Mock'), 
+            ('PBMC_5hr_sORF2341_0', 'PBMC_5hr_Mock'),
+            ('PBMC_5hr_LPS_sORF2184_0', 'PBMC_5hr_LPS'),
+            ('PBMC_5hr_LPS_sORF2341_0', 'PBMC_5hr_LPS'),
+            ('PBMC_5hr_sORF2341_0', 'PBMC_5hr_sORF2184_0'),
+            ('PBMC_5hr_LPS_sORF2341_0', 'PBMC_5hr_LPS_sORF2184_0'),
+        ],
+        'PBMC 24hr': [
+            ('None', 'None'),
+            ('PBMC_24hr_LPS', 'PBMC_24hr_Mock'),
+            ('PBMC_24hr_sORF2184_0', 'PBMC_24hr_Mock'), 
+            ('PBMC_24hr_sORF2341_0', 'PBMC_24hr_Mock'),
+            ('PBMC_24hr_LPS_sORF2184_0', 'PBMC_24hr_LPS'),
+            ('PBMC_24hr_LPS_sORF2341_0', 'PBMC_24hr_LPS'),
+            ('PBMC_24hr_sORF2341_0', 'PBMC_24hr_sORF2184_0'),
+            ('PBMC_24hr_LPS_sORF2341_0', 'PBMC_24hr_LPS_sORF2184_0'),
+            ('PBMC_24hr_LPS_sORF2406', 'PBMC_24hr_LPS'),
+        ],
+        'HCT116': [
+            ('HCT116_BAX', 'HCT116_HiBit'),
+            ('HCT116_VTX0839468', 'HCT116_HiBit'), 
+            ('HCT116_VTX0850636', 'HCT116_HiBit'),
+        ],
+        'A549': [
+            ('A549_BAX', 'A549_HiBit'),
+            ('A549_VTX0518494', 'A549_HiBit'), 
+        ],
+        'PBMC': [
+            ('None', 'None'),
+            ('PBMC_5hr_LPS', 'PBMC_5hr_Mock'),
+            ('PBMC_5hr_sORF2184_0', 'PBMC_5hr_Mock'), 
+            ('PBMC_5hr_sORF2341_0', 'PBMC_5hr_Mock'),
+            ('PBMC_5hr_LPS_sORF2184_0', 'PBMC_5hr_LPS'),
+            ('PBMC_5hr_LPS_sORF2341_0', 'PBMC_5hr_LPS'),
+            ('PBMC_5hr_sORF2341_0', 'PBMC_5hr_sORF2184_0'),
+            ('PBMC_5hr_LPS_sORF2341_0', 'PBMC_5hr_LPS_sORF2184_0'),
+            ('PBMC_24hr_LPS', 'PBMC_24hr_Mock'),
+            ('PBMC_24hr_sORF2184_0', 'PBMC_24hr_Mock'), 
+            ('PBMC_24hr_sORF2341_0', 'PBMC_24hr_Mock'),
+            ('PBMC_24hr_LPS_sORF2184_0', 'PBMC_24hr_LPS'),
+            ('PBMC_24hr_LPS_sORF2341_0', 'PBMC_24hr_LPS'),
+            ('PBMC_24hr_sORF2341_0', 'PBMC_24hr_sORF2184_0'),
+            ('PBMC_24hr_LPS_sORF2341_0', 'PBMC_24hr_LPS_sORF2184_0'),
+            ('PBMC_24hr_LPS_sORF2406', 'PBMC_24hr_LPS'),
+            ('PBMC_5hr_Mock', 'PBMC_24hr_Mock'),
+            ('PBMC_5hr_LPS', 'PBMC_24hr_LPS'),
+            ('PBMC_5hr_sORF2184_0', 'PBMC_24hr_sORF2184_0'),
+            ('PBMC_5hr_LPS_sORF2184_0', 'PBMC_24hr_LPS_sORF2184_0'),
+            ('PBMC_5hr_sORF2341_0', 'PBMC_24hr_sORF2341_0'),
+            ('PBMC_5hr_LPS_sORF2341_0', 'PBMC_24hr_LPS_sORF2341_0'),
+        ],
+    }
+    
+    focus_contrasts = all_focus_contrasts['PBMC']
 
+    edgeR_dfs = r_run_edger(adata_pb, focus_contrasts, adata_path)
+
+    gene_sets, pathway_df = load_gene_set()
+
+    gsva_dfs = r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path, gene_sets, pathway_df, edgeR_dfs)
 
 
 if __name__ == "__main__":

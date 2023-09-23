@@ -50,10 +50,13 @@ def convert_df(df):
 
 #output_dir = Path('/home/ubuntu/scrna_pipe/data')
 output_dir = Path('/home/ec2-user/scrna_pipe/data')
+output_dir = Path('/home/ec2-user/velia-analyses-dev/VAP_20230711_single_cell_moa/outputs/run_6')
+
 
 adata_paths = {
     'PBMC 5hr': output_dir.joinpath('analysis', 'PBMC_5hr.h5ad'),
     'PBMC 24hr': output_dir.joinpath('analysis', 'PBMC_24hr.h5ad'),
+    'PBMC': output_dir.joinpath('analysis', 'PBMC_coarse.h5ad'),
     #'HCT116': output_dir.joinpath('outputs', 'run_5', 'analysis', 'HCT116.h5ad'),
     #'A549': output_dir.joinpath('outputs', 'run_5', 'analysis', 'A549.h5ad'),
 }
@@ -87,11 +90,33 @@ focus_contrasts = {
     'A549': [
         ('A549_BAX', 'A549_HiBit'),
         ('A549_VTX0518494', 'A549_HiBit'), 
-   ]
+   ],
+    'PBMC': [
+        ('None', 'None'),
+        ('PBMC_5hr_LPS', 'PBMC_5hr_Mock'),
+        ('PBMC_5hr_sORF2184_0', 'PBMC_5hr_Mock'), 
+        ('PBMC_5hr_sORF2341_0', 'PBMC_5hr_Mock'),
+        ('PBMC_5hr_LPS_sORF2184_0', 'PBMC_5hr_LPS'),
+        ('PBMC_5hr_LPS_sORF2341_0', 'PBMC_5hr_LPS'),
+        ('PBMC_5hr_sORF2341_0', 'PBMC_5hr_sORF2184_0'),
+        ('PBMC_5hr_LPS_sORF2341_0', 'PBMC_5hr_LPS_sORF2184_0'),
+        ('PBMC_24hr_LPS', 'PBMC_24hr_Mock'),
+        ('PBMC_24hr_sORF2184_0', 'PBMC_24hr_Mock'), 
+        ('PBMC_24hr_sORF2341_0', 'PBMC_24hr_Mock'),
+        ('PBMC_24hr_LPS_sORF2184_0', 'PBMC_24hr_LPS'),
+        ('PBMC_24hr_LPS_sORF2341_0', 'PBMC_24hr_LPS'),
+        ('PBMC_24hr_sORF2341_0', 'PBMC_24hr_sORF2184_0'),
+        ('PBMC_24hr_LPS_sORF2341_0', 'PBMC_24hr_LPS_sORF2184_0'),
+        ('PBMC_24hr_LPS_sORF2406', 'PBMC_24hr_LPS'),
+        ('PBMC_5hr_Mock', 'PBMC_24hr_Mock'),
+        ('PBMC_5hr_LPS', 'PBMC_24hr_LPS'),
+        ('PBMC_5hr_sORF2184_0', 'PBMC_24hr_sORF2184_0'),
+        ('PBMC_5hr_LPS_sORF2184_0', 'PBMC_24hr_LPS_sORF2184_0'),
+    ],
 }
 
 
-datasets = ['PBMC 5hr', 'PBMC 24hr']#, 'A549', 'HCT116']
+datasets = ['PBMC', 'PBMC 5hr', 'PBMC 24hr']#, 'A549', 'HCT116']
 
 with st.sidebar:
 

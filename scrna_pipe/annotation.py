@@ -76,7 +76,7 @@ def run_celltypist(adata, model_name="Immune_All_High.pkl"):
     adata_celltypist.X = adata_celltypist.X.toarray()
 
     models.download_models(
-        force_update=True, model=[model_name]
+        force_update=False, model=[model_name]
     )
 
     model = models.Model.load(model=model_name)
