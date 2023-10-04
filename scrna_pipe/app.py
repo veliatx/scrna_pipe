@@ -51,16 +51,15 @@ def convert_df(df):
 
 #output_dir = Path('/home/ubuntu/scrna_pipe/data')
 #output_dir = Path('/home/ec2-user/scrna_pipe/data')
-#output_dir = Path('/home/ec2-user/velia-analyses-dev/VAP_20230711_single_cell_moa/outputs/run_6')
-output_dir = Path('/home/ec2-user/velia-analyses-dev/VAP_20230919_single_cell_pbmc_hits/outputs/run_2')
+output_dir_plate1 = Path('/home/ec2-user/velia-analyses-dev/VAP_20230711_single_cell_moa/outputs/run_6')
+output_dir_plate2 = Path('/home/ec2-user/velia-analyses-dev/VAP_20230919_single_cell_pbmc_hits/outputs/run_2')
 
 
 adata_paths = {
-    #'PBMC 5hr': output_dir.joinpath('analysis', '5hr_coarse.h5ad'),
+    'PBMC - plate 1': output_dir_plate1.joinpath('analysis', 'PBMC_coarse.h5ad'),
     #'PBMC 24hr': output_dir.joinpath('analysis', '24hr_coarse.h5ad'),
-    '5hr': output_dir.joinpath('analysis', '5hr_coarse.h5ad'),
-    '24hr': output_dir.joinpath('analysis', '24hr_coarse.h5ad'),
-    #'PBMC': output_dir.joinpath('analysis', 'PBMC_coarse.h5ad'),
+    'PBMC 5hr - plate 2': output_dir_plate2.joinpath('analysis', '5hr_coarse.h5ad'),
+    #'24hr': output_dir.joinpath('analysis', '24hr_coarse.h5ad'),
     #'HCT116': output_dir.joinpath('outputs', 'run_5', 'analysis', 'HCT116.h5ad'),
     #'A549': output_dir.joinpath('outputs', 'run_5', 'analysis', 'A549.h5ad'),
 }
@@ -86,7 +85,7 @@ focus_contrasts = {
         ('PBMC_24hr_LPS_sORF2341_0', 'PBMC_24hr_LPS_sORF2184_0'),
         ('PBMC_24hr_LPS_sORF2406', 'PBMC_24hr_LPS'),
     ],
-    'PBMC': [
+    'PBMC - plate 1': [
         ('None', 'None'),
         ('PBMC_5hr_LPS', 'PBMC_5hr_Mock'),
         ('PBMC_5hr_sORF2184_0', 'PBMC_5hr_Mock'), 
@@ -108,7 +107,7 @@ focus_contrasts = {
         ('PBMC_5hr_sORF2184_0', 'PBMC_24hr_sORF2184_0'),
         ('PBMC_5hr_LPS_sORF2184_0', 'PBMC_24hr_LPS_sORF2184_0'),
     ],
-    '5hr': [
+    'PBMC 5hr - plate 2': [
         ('None', 'None'),
         ('Mock__R848_5hr_', 'Mock__Fc_1uM_5hr_'),
         ('VTX0851359__5hr_', 'Mock__Fc_1uM_5hr_'),
@@ -142,7 +141,7 @@ focus_contrasts = {
 }
 
 
-datasets = ['5hr']#'PBMC', 'PBMC 5hr', 'PBMC 24hr']#, 'A549', 'HCT116']
+datasets = ['PBMC - plate 1', 'PBMC 5hr - plate 2']#'PBMC', 'PBMC 5hr', 'PBMC 24hr']#, 'A549', 'HCT116']
 
 with st.sidebar:
 
@@ -170,7 +169,6 @@ with st.sidebar:
         'Choose a contrast',
         [f'{x[0]} - {x[1]}' for x in focus_contrasts[dataset]]
     )
-
 
 gene_de_dfs, gsva_de_dfs = load_differential_dfs(adata_paths[dataset])
 
@@ -267,7 +265,6 @@ with st.expander(label='Differential Expression', expanded=True):
             try:
                 plot_df = plotting.extract_cluster_map(plot_gene_df.copy(), adata, cell_type, x)
 
-            
                 heatmap = go.Figure(data=go.Heatmap(z=plot_df.values, 
                                                     x=plot_df.columns, 
                                                     y=plot_df.index,
@@ -318,7 +315,6 @@ with st.expander(label='Differential Expression', expanded=True):
 
                     st.pyplot(ax1)
 
-                    st.write(gene)
 
                 with col4:
                     st.write(c2)
