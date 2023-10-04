@@ -33,7 +33,7 @@ def aggregate_and_filter(adata, cell_identity, obs_to_keep=[]):
     sample_key = 'sample'
     condition_key = 'label'
     cell_identity_key = 'cell_type'
-    num_cell_per_sample = 30
+    num_cell_per_sample = 15
     replicates_per_sample = 1
     
     # subset adata to the given cell identity
@@ -426,6 +426,10 @@ def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path, gene_sets, pathway
             gsva_dfs[contrast_name] = path_table_df
             
             gsva_file_name = f'{adata_path.stem}__gsva__{contrast_name}.csv'
+
+            outpath = gsva_data_path.joinpath('gsva')
+            if not outpath.exists():
+                outpath.mkdir()
 
             path_table_df.to_csv(gsva_data_path.joinpath('gsva', gsva_file_name))
 

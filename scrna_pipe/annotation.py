@@ -45,6 +45,50 @@ def load_count_data(output_dir, sample_sheet_path, keys=['PBMC', '5hr']):
     return adata
 
 
+def load_count_data_2plate(output_dir, sample_sheet_path, 
+    in_keys=['PBMC', '5hr'], out_keys=[]):
+    """
+    This function will merge the samples from the second distribution 
+    plate. It assumes sample names from the first plate end with 'a'
+    and sample names from the second plate end with 'b'.
+    """
+    sample_df = pd.read_csv(sample_sheet_path)
+
+    sample_df = sample_df[sample_df['sample'].str.endswith('a')].copy()
+
+    mask = sample_df['sample'].apply(lambda x: all(k in x for k in in_keys) \
+                                       and not any(k in x for k in out_keys))
+
+    sample_df = sample_df[mask]
+    samples = list(sample_df['sample'])
+
+    adatas = {}
+
+    for sample in samples:
+        sample_a_dir = output_dir.joinpath('samples', f'{sample}.filtered')
+        sample_b_dir = output_dir.joinpath('samples', f'{sample[:-1]}b.filtered')
+            
+        adat_a = sc.read_mtx(sample_a_dir.joinpath('matrix.mtx')).transpose()
+        adat_b = sc.read_mtx(sample_b_dir.joinpath('matrix.mtx')).transpose()
+        adat = ad.concat([adat_a, adat_b])
+        adatas[sample[:-3]] = adat
+
+    sample_name = '_'.join(in_keys)
+    adata = ad.concat(adatas, label="sample")
+
+    feat_df = pd.read_csv(sample_a_dir.joinpath('features.tsv'), sep='\t', 
+                      names=['ensembl_gene_id', 'hgnc_name', 'tag'])
+
+    adata.var = feat_df
+
+    adata.var.set_index('hgnc_name', inplace=True)
+
+    adata.var_names_make_unique()
+    adata.obs_names_make_unique()
+
+    return adata
+
+
 def filter_cells(adata, min_genes=200, max_counts=2e4, min_cells=3):
     """
     """
@@ -97,7 +141,7 @@ def run_celltypist(adata, model_name="Immune_All_High.pkl"):
     return adata
 
 
-def dim_reduction(adata):
+def dim_reduction(adata, min_dist=.4, spread=.9):
     """
     """
     sc.pp.normalize_total(adata, target_sum=1e4)
@@ -120,6 +164,6 @@ def dim_reduction(adata):
     sc.tl.paga(adata)
     sc.pl.paga(adata, plot=False)
 
-    sc.tl.umap(adata, init_pos='paga', min_dist=.4, spread=.9)
+    sc.tl.umap(adata, init_pos='paga', min_dist=min_dist, spread=spread)
 
     return adata, ax_pca

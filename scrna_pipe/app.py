@@ -11,6 +11,7 @@ from streamlit_echarts import st_echarts
 from streamlit_plotly_events import plotly_events
 
 import plotly.express as px
+import plotly.graph_objects as go
 
 from scrna_pipe import plotting
 
@@ -24,10 +25,10 @@ def load_anndata(adata_path):
     adata = sc.read(adata_path)
     adata_dim = sc.read(adata_path.parent.joinpath(f'{adata_path.stem}_umap.h5ad'))
     
-    adata_pb = differential.load_anndata_pseudobulk(adata_path, overwrite=False)
-    adata_pb = differential.process_adata_pbmc(adata_pb)    
+    #adata_pb = differential.load_anndata_pseudobulk(adata_path, overwrite=False)
+    #adata_pb = differential.process_adata_pbmc(adata_pb)    
 
-    return adata, adata_dim, adata_pb
+    return adata, adata_dim#, adata_pb
 
 
 @st.cache_data
@@ -49,14 +50,17 @@ def convert_df(df):
 
 
 #output_dir = Path('/home/ubuntu/scrna_pipe/data')
-output_dir = Path('/home/ec2-user/scrna_pipe/data')
-output_dir = Path('/home/ec2-user/velia-analyses-dev/VAP_20230711_single_cell_moa/outputs/run_6')
+#output_dir = Path('/home/ec2-user/scrna_pipe/data')
+#output_dir = Path('/home/ec2-user/velia-analyses-dev/VAP_20230711_single_cell_moa/outputs/run_6')
+output_dir = Path('/home/ec2-user/velia-analyses-dev/VAP_20230919_single_cell_pbmc_hits/outputs/run_2')
 
 
 adata_paths = {
-    'PBMC 5hr': output_dir.joinpath('analysis', 'PBMC_5hr.h5ad'),
-    'PBMC 24hr': output_dir.joinpath('analysis', 'PBMC_24hr.h5ad'),
-    'PBMC': output_dir.joinpath('analysis', 'PBMC_coarse.h5ad'),
+    #'PBMC 5hr': output_dir.joinpath('analysis', '5hr_coarse.h5ad'),
+    #'PBMC 24hr': output_dir.joinpath('analysis', '24hr_coarse.h5ad'),
+    '5hr': output_dir.joinpath('analysis', '5hr_coarse.h5ad'),
+    '24hr': output_dir.joinpath('analysis', '24hr_coarse.h5ad'),
+    #'PBMC': output_dir.joinpath('analysis', 'PBMC_coarse.h5ad'),
     #'HCT116': output_dir.joinpath('outputs', 'run_5', 'analysis', 'HCT116.h5ad'),
     #'A549': output_dir.joinpath('outputs', 'run_5', 'analysis', 'A549.h5ad'),
 }
@@ -82,15 +86,6 @@ focus_contrasts = {
         ('PBMC_24hr_LPS_sORF2341_0', 'PBMC_24hr_LPS_sORF2184_0'),
         ('PBMC_24hr_LPS_sORF2406', 'PBMC_24hr_LPS'),
     ],
-    'HCT116': [
-        ('HCT116_BAX', 'HCT116_HiBit'),
-        ('HCT116_VTX0839468', 'HCT116_HiBit'), 
-        ('HCT116_VTX0850636', 'HCT116_HiBit'),
-    ],
-    'A549': [
-        ('A549_BAX', 'A549_HiBit'),
-        ('A549_VTX0518494', 'A549_HiBit'), 
-   ],
     'PBMC': [
         ('None', 'None'),
         ('PBMC_5hr_LPS', 'PBMC_5hr_Mock'),
@@ -113,10 +108,41 @@ focus_contrasts = {
         ('PBMC_5hr_sORF2184_0', 'PBMC_24hr_sORF2184_0'),
         ('PBMC_5hr_LPS_sORF2184_0', 'PBMC_24hr_LPS_sORF2184_0'),
     ],
+    '5hr': [
+        ('None', 'None'),
+        ('Mock__R848_5hr_', 'Mock__Fc_1uM_5hr_'),
+        ('VTX0851359__5hr_', 'Mock__Fc_1uM_5hr_'),
+        ('VTX0851359__R848_5hr_', 'Mock__R848_5hr_'), 
+        ('IL10__5hr_', 'Mock__Fc_1uM_5hr_'),
+        ('IL10__R848_5hr_', 'Mock__R848_5hr_'),
+        ('VTX0852555__5hr_', 'Mock__Fc_1uM_5hr_'),
+        ('VTX0852555__R848_5hr_', 'Mock__R848_5hr_'),
+        ('VTX0851359__R848_5hr_', 'IL10__R848_5hr_'), 
+        ('VTX0851359__5hr_', 'IL10__5hr_'),
+
+        ('VTX0852555__5hr_', 'IL10__5hr_'),
+        ('VTX0852555__R848_5hr_', 'IL10__R848_5hr_'),
+        
+        ('VTX0852488__5hr_', 'IL10__5hr_'),
+        ('VTX0852488__R848_5hr_', 'IL10__R848_5hr_'),
+        
+        ('VTX0851359__5hr_', 'VTX0852555__5hr_'),
+        ('VTX0851359__R848_5hr_', 'VTX0852555__R848_5hr_'),
+    ],
+    '24hr': [
+        ('None', 'None'),
+        ('Mock__R848_24hr_', 'Mock__Fc_1uM_24hr_'),
+        ('VTX0851359__24hr_', 'Mock__Fc_1uM_24hr_'),
+        ('VTX0851359__R848_24hr_', 'Mock__R848_24hr_'),
+        ('IL10__24hr_', 'Mock__Fc_1uM_24hr_'),
+        ('IL10__R848_24hr_', 'Mock__R848_24hr_'),
+        ('VTX0852555__24hr_', 'Mock__Fc_1uM_24hr_'),
+        ('VTX0852555__R848_24hr_', 'Mock__R848_24hr_'),        
+    ],
 }
 
 
-datasets = ['PBMC', 'PBMC 5hr', 'PBMC 24hr']#, 'A549', 'HCT116']
+datasets = ['5hr']#'PBMC', 'PBMC 5hr', 'PBMC 24hr']#, 'A549', 'HCT116']
 
 with st.sidebar:
 
@@ -124,11 +150,12 @@ with st.sidebar:
         'Choose a dataset',
         datasets, index=0,
     )
-    adata, adata_dim, adata_pb = load_anndata(adata_paths[dataset])
+    adata, adata_dim = load_anndata(adata_paths[dataset])
     
     st.divider()
 
-    cell_types = list(set(adata.obs['cell_type']))
+    cell_types = ['Macrophages', 'T cells', 'B cells', 'Monocytes', 'ILC', 'DC']
+    #cell_types = list(set(adata.obs['cell_type']))
     cell_types.sort()
     cell_types.insert(0, 'All')
 
@@ -157,7 +184,7 @@ color_map =  {
     "DC": "#e377c2",
     "Endothelial cells": "#7f7f7f",
     "Plasma cells": "#bcbd22",
-    "cluster_0": "#1f77b4",
+    "ETP": "#1f77b4",
 }
 
 if cell_type and cell_type != 'All':
@@ -195,21 +222,23 @@ with st.expander(label='Differential Expression', expanded=True):
         if gsva_key in gsva_de_dfs.keys():
 
             plot_gene_df = gene_de_dfs[edger_key]
-            plot_gene_df['point_size'] = 10
+            plot_gene_df['point_size'] = 5
+            plot_gene_df['Significant'] = plot_gene_df.apply(lambda x: abs(x.logFC) > 1 and x.FDR < .05, axis=1)
 
             plot_gsva_df = gsva_de_dfs[gsva_key]
-            plot_gsva_df['point_size'] = 10
-
+            plot_gsva_df['point_size'] = 5
                         
             col1, col2 = st.columns(2)
 
             with col1:
                 st.subheader('Gene Volcano Plot')
+                select_gene_df = plot_gene_df.copy()
 
-                fig = px.scatter(plot_gene_df, x='logFC', y='-Log10(FDR)', opacity=0.5,
-                                 color="Significant", size='point_size', size_max=10, template='plotly_white',
+                fig = px.scatter(select_gene_df, x='logFC', y='-Log10(FDR)', opacity=0.5,
+                                 color="Significant", size='point_size', size_max=5, template='plotly_white',
                                  labels={"logFC": "Log2(FoldChange)"},
                                  hover_data=['gene'])
+
 
                 fig.update_layout(legend_font=dict(size=18))
                 
@@ -234,21 +263,36 @@ with st.expander(label='Differential Expression', expanded=True):
                     key='download-csv-gene'
                 )
 
+            x = contrast.split(' - ')
+            try:
+                plot_df = plotting.extract_cluster_map(plot_gene_df.copy(), adata, cell_type, x)
+
+            
+                heatmap = go.Figure(data=go.Heatmap(z=plot_df.values, 
+                                                    x=plot_df.columns, 
+                                                    y=plot_df.index,
+                                                    colorscale='Viridis'))
+                heatmap.update_layout(xaxis=dict(nticks=len(plot_df.columns)))
+
+                st.plotly_chart(heatmap, theme="streamlit", use_container_width=True)
+            except:
+                None
+
 
             if selected_points:
                 st.subheader('UMAP projection of selected gene')
+                
+                select_gene_df = select_gene_df[select_gene_df['Significant']]
 
-                gene = plot_gene_df.loc[selected_points[0]["pointIndex"]]['gene']
+                gene = select_gene_df.iloc[selected_points[0]["pointIndex"]]['gene']
 
-                dataset, _, contrast, cell_type = edger_key.split('__')
                 c1, c2 = contrast.split('-')
-
-                c1 = c1.replace('_', '-')
-                c2 = c2.replace('_', '-')
+                
+                c1 = c1.replace('_', '-').strip()
+                c2 = c2.replace('_', '-').strip()
 
                 samples1 = [f'{c1}-{i}' for i in range(1, 4)]
                 samples2 = [f'{c2}-{i}' for i in range(1, 4)]
-
                 col3, col4 = st.columns(2)
 
                 try:
@@ -319,14 +363,25 @@ with st.expander(label='Differential Expression', expanded=True):
 
 
 
-            st.divider()
+with st.expander(label='Pathway analysis', expanded=True):
+    if cell_type != 'All' and contrast != 'None - None':
+        cell_type = cell_type.replace(' ', '')
+        contrast_map = {f'{x[0]} - {x[1]}': f'{x[0]}-{x[1]}' for x in focus_contrasts[dataset]}
+        
+        gsva_key = f'{adata_paths[dataset].stem}__gsva__{contrast_map[contrast]}__{cell_type.replace("_", "")}'
+        
+        st.write(edger_key)
+        if gsva_key in gsva_de_dfs.keys():
 
+            plot_gsva_df = gsva_de_dfs[gsva_key]
+            plot_gsva_df['point_size'] = 10
+                        
             col5, col6 = st.columns(2)
 
             with col5:
                 st.subheader('Pathway Volcano Plot')
                 fig = px.scatter(plot_gsva_df, x='logFC', y='-Log10(FDR)', opacity=0.5,
-                                 color="Significant", size='point_size', size_max=10, template='plotly_white',
+                                 color="Significant", size='point_size', size_max=5, template='plotly_white',
                                  labels={"logFC": "Log2(FoldChange)"},
                                  hover_data=['Pathway'])
 
