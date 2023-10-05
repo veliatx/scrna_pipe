@@ -50,41 +50,20 @@ def convert_df(df):
 
 
 #output_dir = Path('/home/ubuntu/scrna_pipe/data')
-#output_dir = Path('/home/ec2-user/scrna_pipe/data')
+output_dir = Path('/home/ec2-user/scrna_pipe/data')
 output_dir_plate1 = Path('/home/ec2-user/velia-analyses-dev/VAP_20230711_single_cell_moa/outputs/run_6')
 output_dir_plate2 = Path('/home/ec2-user/velia-analyses-dev/VAP_20230919_single_cell_pbmc_hits/outputs/run_2')
 
 
 adata_paths = {
-    'PBMC - plate 1': output_dir_plate1.joinpath('analysis', 'PBMC_coarse.h5ad'),
+    'PBMC - plate 1': output_dir.joinpath('analysis_plate_1', 'PBMC_coarse.h5ad'),
     #'PBMC 24hr': output_dir.joinpath('analysis', '24hr_coarse.h5ad'),
-    'PBMC 5hr - plate 2': output_dir_plate2.joinpath('analysis', '5hr_coarse.h5ad'),
+    'PBMC 5hr - plate 2': output_dir.joinpath('analysis_plate_2', '5hr_coarse_subset.h5ad'),
     #'24hr': output_dir.joinpath('analysis', '24hr_coarse.h5ad'),
-    #'HCT116': output_dir.joinpath('outputs', 'run_5', 'analysis', 'HCT116.h5ad'),
-    #'A549': output_dir.joinpath('outputs', 'run_5', 'analysis', 'A549.h5ad'),
 }
 
 focus_contrasts = {
-    'PBMC 5hr': [
-        ('None', 'None'),
-        ('PBMC_5hr_LPS', 'PBMC_5hr_Mock'),
-        ('PBMC_5hr_sORF2184_0', 'PBMC_5hr_Mock'), 
-        ('PBMC_5hr_sORF2341_0', 'PBMC_5hr_Mock'),
-        ('PBMC_5hr_LPS_sORF2184_0', 'PBMC_5hr_LPS'),
-        ('PBMC_5hr_LPS_sORF2341_0', 'PBMC_5hr_LPS'),
-        ('PBMC_5hr_sORF2341_0', 'PBMC_5hr_sORF2184_0'),
-        ('PBMC_5hr_LPS_sORF2341_0', 'PBMC_5hr_LPS_sORF2184_0'),
-    ],
-    'PBMC 24hr': [
-        ('PBMC_24hr_LPS', 'PBMC_24hr_Mock'),
-        ('PBMC_24hr_sORF2184_0', 'PBMC_24hr_Mock'), 
-        ('PBMC_24hr_sORF2341_0', 'PBMC_24hr_Mock'),
-        ('PBMC_24hr_LPS_sORF2184_0', 'PBMC_24hr_LPS'),
-        ('PBMC_24hr_LPS_sORF2341_0', 'PBMC_24hr_LPS'),
-        ('PBMC_24hr_sORF2341_0', 'PBMC_24hr_sORF2184_0'),
-        ('PBMC_24hr_LPS_sORF2341_0', 'PBMC_24hr_LPS_sORF2184_0'),
-        ('PBMC_24hr_LPS_sORF2406', 'PBMC_24hr_LPS'),
-    ],
+
     'PBMC - plate 1': [
         ('None', 'None'),
         ('PBMC_5hr_LPS', 'PBMC_5hr_Mock'),
@@ -111,22 +90,16 @@ focus_contrasts = {
         ('None', 'None'),
         ('Mock__R848_5hr_', 'Mock__Fc_1uM_5hr_'),
         ('VTX0851359__5hr_', 'Mock__Fc_1uM_5hr_'),
-        ('VTX0851359__R848_5hr_', 'Mock__R848_5hr_'), 
-        ('IL10__5hr_', 'Mock__Fc_1uM_5hr_'),
-        ('IL10__R848_5hr_', 'Mock__R848_5hr_'),
+        ('VTX0851359__R848_5hr_', 'Mock__R848_5hr_'),
+        
         ('VTX0852555__5hr_', 'Mock__Fc_1uM_5hr_'),
         ('VTX0852555__R848_5hr_', 'Mock__R848_5hr_'),
-        ('VTX0851359__R848_5hr_', 'IL10__R848_5hr_'), 
-        ('VTX0851359__5hr_', 'IL10__5hr_'),
-
-        ('VTX0852555__5hr_', 'IL10__5hr_'),
-        ('VTX0852555__R848_5hr_', 'IL10__R848_5hr_'),
         
-        ('VTX0852488__5hr_', 'IL10__5hr_'),
-        ('VTX0852488__R848_5hr_', 'IL10__R848_5hr_'),
+        ('VTX0852488__5hr_', 'Mock__Fc_1uM_5hr_'),
+        ('VTX0852488__R848_5hr_', 'Mock__R848_5hr_'),
         
-        ('VTX0851359__5hr_', 'VTX0852555__5hr_'),
-        ('VTX0851359__R848_5hr_', 'VTX0852555__R848_5hr_'),
+        ('IL10__5hr_', 'Mock__Fc_1uM_5hr_'),
+        ('IL10__R848_5hr_', 'Mock__R848_5hr_'),
     ],
     '24hr': [
         ('None', 'None'),
@@ -233,7 +206,8 @@ with st.expander(label='Differential Expression', expanded=True):
                 select_gene_df = plot_gene_df.copy()
 
                 fig = px.scatter(select_gene_df, x='logFC', y='-Log10(FDR)', opacity=0.5,
-                                 color="Significant", size='point_size', size_max=5, template='plotly_white',
+                                 color="Significant", color_discrete_map={True: "blue", False: "red"},
+                                 size='point_size', size_max=5, template='plotly_white',
                                  labels={"logFC": "Log2(FoldChange)"},
                                  hover_data=['gene'])
 
@@ -377,7 +351,8 @@ with st.expander(label='Pathway analysis', expanded=True):
             with col5:
                 st.subheader('Pathway Volcano Plot')
                 fig = px.scatter(plot_gsva_df, x='logFC', y='-Log10(FDR)', opacity=0.5,
-                                 color="Significant", size='point_size', size_max=5, template='plotly_white',
+                                 color="Significant", color_discrete_map={True: "blue", False: "red"},
+                                 size='point_size', size_max=5, template='plotly_white',
                                  labels={"logFC": "Log2(FoldChange)"},
                                  hover_data=['Pathway'])
 

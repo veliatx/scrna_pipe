@@ -3,6 +3,9 @@ import numpy as np
 import pandas as pd
 import scanpy as sc
 
+from scipy.spatial.distance import pdist, squareform
+from scipy.cluster.hierarchy import linkage, dendrogram
+
 
 def plot_string_network(gene_list):
     """
@@ -54,26 +57,48 @@ def extract_cluster_map(de_df, adata, cell_type, contrast):
 
     sc.pp.normalize_total(adata, target_sum=1e4)
     sc.pp.log1p(adata)
-    
-    print(contrast, cell_type)
-    print(set(adata.obs['label']))
-    print(set(adata.obs['cell_type']))
 
     plot_adata = adata[(adata.obs['cell_type'] == cell_type) &\
                        (adata.obs['label'].isin(list(contrast)))]
     
     plot_adata = plot_adata[:, plot_adata.var.index.isin(de_genes)]
-    
-    cg = sc.pl.clustermap(plot_adata, use_raw=False,
-                      obs_keys='label', cmap='mako', show=False)
-    
-    row_order = cg.dendrogram_row.reordered_ind
-    col_order = cg.dendrogram_col.reordered_ind
+
+    row_linkage = linkage(pdist(plot_adata.X.todense()), method='average')
+    col_linkage = linkage(pdist(plot_adata.X.T.todense()), method='average')
+
+    dendro_row = dendrogram(row_linkage, no_plot=True)
+    dendro_col = dendrogram(col_linkage, no_plot=True)
 
     plot_adata.obs['cell_id'] = plot_adata.obs.apply(lambda x: x.label + x.name, axis=1)
     df = pd.DataFrame(plot_adata.X.toarray(), columns=plot_adata.var.index, index=plot_adata.obs['cell_id'])
-    plot_df = df.iloc[row_order, col_order]
+    plot_df = df.iloc[dendro_row['leaves'], dendro_col['leaves']]
     
     plot_df['label'] = plot_df.apply(lambda x: np.max(plot_df) if contrast[0] in x.name else 0, axis=1)
     
     return plot_df
+
+
+def assign_opacity(row, treatment, control):
+    """
+    """
+    if (row[f'Significant_{treatment}'] and not row[f'Significant_{control}']):
+        return 1
+    elif (row[f'Significant_{treatment}'] and row[f'Significant_{control}']):
+        return .5
+    elif (row[f'Significant_{control}']):
+        return .2
+    else:
+        return .1
+
+
+def assign_size(row, treatment, control):
+    """
+    """
+    if (row[f'Significant_{treatment}'] and not row[f'Significant_{control}']):
+        return 10
+    elif (row[f'Significant_{treatment}'] and row[f'Significant_{control}']):
+        return 5
+    elif (row[f'Significant_{control}']):
+        return 3
+    else:
+        return 1
