@@ -2,6 +2,8 @@ import requests
 import numpy as np
 import pandas as pd
 import scanpy as sc
+import plotly.express as px
+import plotly.graph_objects as go
 
 from scipy.spatial.distance import pdist, squareform
 from scipy.cluster.hierarchy import linkage, dendrogram
@@ -82,9 +84,9 @@ def assign_opacity(row, treatment, control):
     """
     """
     if (row[f'Significant_{treatment}'] and not row[f'Significant_{control}']):
-        return 1
+        return .8
     elif (row[f'Significant_{treatment}'] and row[f'Significant_{control}']):
-        return .5
+        return .4
     elif (row[f'Significant_{control}']):
         return .2
     else:
@@ -102,3 +104,108 @@ def assign_size(row, treatment, control):
         return 3
     else:
         return 1
+
+
+def plot_static_umap(adata_dim, samples, gene):
+    """
+    """
+    try:
+        gene_idx = adata_dim.var.index.get_loc(gene)
+        max_val = np.percentile(adata_dim.X[:, gene_idx], q=98)
+    except:
+        max_val = 5
+
+    ax = sc.pl.umap(
+        adata_dim[adata_dim.obs['sample'].isin(samples)],
+        color=[gene],
+        frameon=False,
+        sort_order=False,
+        wspace=1,
+        return_fig=True,
+        vmin=0.1,
+        vmax=max_val,
+        cmap='viridis'
+    )
+
+    return ax
+
+
+def plot_pathway_volcano(plot_gsva_df):
+    """
+    """
+    fig = px.scatter(plot_gsva_df, x='logFC', y='-Log10(FDR)', opacity=0.5,
+                    color="Significant", color_discrete_map={True: "blue", False: "red"},
+                    size='point_size', size_max=5, template='plotly_white',
+                    labels={"logFC": "Log2(FoldChange)"},
+                    hover_data=['Pathway'])
+
+    fig.update_layout(legend_font=dict(size=18))
+
+    return fig
+
+
+def plot_gene_volcano(plot_gene_df):
+    """
+    """
+    fig = px.scatter(plot_gene_df, x='logFC', y='-Log10(FDR)', opacity=0.5,
+                    color="Significant", color_discrete_map={True: "blue", False: "red"},
+                    size='point_size', size_max=5, template='plotly_white',
+                    labels={"logFC": "Log2(FoldChange)"},
+                    hover_data=['gene'])
+
+    fig.update_layout(legend_font=dict(size=18))
+
+    return fig
+
+
+def plot_diff_scatter(top_dfs, contrast_map, cell_type, dataset_abbr, contrast1, contrast2, 
+                      diff_type='gene', algorithm='edgeR'):
+    """
+    """
+    cell_type = cell_type.replace(' ', '').replace("_", "")
+    
+    key1 = f'{dataset_abbr}__{algorithm}__{contrast_map[contrast1]}__{cell_type}'
+    key2 = f'{dataset_abbr}__{algorithm}__{contrast_map[contrast2]}__{cell_type}'
+
+    df1 = top_dfs[key1]
+    df2 = top_dfs[key2]
+
+    treatment = contrast1.split('-')[0].strip()
+    control = contrast2.split('-')[0].strip()
+
+    df1[f'Significant'] = df1.apply(lambda x: x.FDR < .05 and np.abs(x.logFC) > 1, axis=1)
+    df2[f'Significant'] = df2.apply(lambda x: x.FDR < .05 and np.abs(x.logFC) > 1, axis=1)
+
+    scatter_df = df1.merge(df2, left_on=diff_type, right_on=diff_type, suffixes=(f'_{treatment}', f'_{control}'))
+
+    scatter_df['size'] = scatter_df.apply(lambda x:  assign_size(x, treatment, control), axis=1)
+    scatter_df['opacity'] = scatter_df.apply(lambda x:  assign_opacity(x, treatment, control), axis=1)
+
+    scatter = px.scatter(scatter_df, x=f'logFC_{treatment}', y=f'logFC_{control}', color=f'Significant_{treatment}', 
+                        color_discrete_map={True: "blue", False: "red"},
+                        size_max=20, template='plotly_white', opacity=scatter_df['opacity'], size=scatter_df['size'],
+                        hover_data=[diff_type, 'opacity', f'Significant_{treatment}', f'Significant_{control}'])
+
+    scatter.update_layout(title=f"Contrast {diff_type} scatter")
+
+    scatter_df = scatter_df[scatter_df[f'Significant_{treatment}'] & ~scatter_df[f'Significant_{control}']]
+    scatter_cols = [diff_type, f'logFC_{treatment}', f'FDR_{treatment}', f'Significant_{treatment}',
+                               f'logFC_{control}', f'FDR_{control}', f'Significant_{control}']
+
+    return scatter, scatter_df[scatter_cols]
+
+
+def plot_umap(plot_df, color_map):
+    """
+    """
+    fig = px.scatter(plot_df, x=0, y=1, opacity=0.5,
+                    color="cell_type", color_discrete_map=color_map,
+                    labels={
+                        "0": "UMAP 2",
+                        "1": "UMAP 1",
+                    },)
+
+    fig.update_layout(legend_font=dict(size=24))
+
+    return fig
+

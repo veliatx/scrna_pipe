@@ -330,7 +330,7 @@ def r_run_edger(adata_pb, focus_contrasts, adata_path):
     return edgeR_dfs
 
 
-def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path, gene_sets, pathway_df, de_gene_tables):
+def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path, gene_sets, pathway_df, de_gene_tables, method='gsva'):
     """
     """
             
@@ -338,8 +338,8 @@ def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path, gene_sets, pathway
 
     r_list = robjects.r.assign("gene_sets", r_list)
 
-    gsva_code = """
-    gsva_df <- gsva(cpm_df, gene_sets, method='gsva')
+    gsva_code = f"""
+    gsva_df <- gsva(cpm_df, gene_sets, method='{method}')
     """
 
     _ = robjects.r(gsva_code)
