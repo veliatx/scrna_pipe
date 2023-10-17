@@ -173,14 +173,18 @@ def plot_diff_scatter(top_dfs, contrast_map, cell_type, dataset_abbr, contrast1,
     treatment = contrast1.split('-')[0].strip()
     control = contrast2.split('-')[0].strip()
 
-    df1[f'Significant'] = df1.apply(lambda x: x.FDR < .05 and np.abs(x.logFC) > 1, axis=1)
-    df2[f'Significant'] = df2.apply(lambda x: x.FDR < .05 and np.abs(x.logFC) > 1, axis=1)
-
+    if diff_type == 'gene':
+        df1[f'Significant'] = df1.apply(lambda x: x.FDR < .05 and np.abs(x.logFC) > 1, axis=1)
+        df2[f'Significant'] = df2.apply(lambda x: x.FDR < .05 and np.abs(x.logFC) > 1, axis=1)
+    else:
+        df1[f'Significant'] = df1.apply(lambda x: x.FDR < .05, axis=1)
+        df2[f'Significant'] = df2.apply(lambda x: x.FDR < .05, axis=1)
+        
     scatter_df = df1.merge(df2, left_on=diff_type, right_on=diff_type, suffixes=(f'_{treatment}', f'_{control}'))
 
     scatter_df['size'] = scatter_df.apply(lambda x:  assign_size(x, treatment, control), axis=1)
     scatter_df['opacity'] = scatter_df.apply(lambda x:  assign_opacity(x, treatment, control), axis=1)
-
+    
     scatter = px.scatter(scatter_df, x=f'logFC_{treatment}', y=f'logFC_{control}', color=f'Significant_{treatment}', 
                         color_discrete_map={True: "blue", False: "red"},
                         size_max=20, template='plotly_white', opacity=scatter_df['opacity'], size=scatter_df['size'],
@@ -189,13 +193,21 @@ def plot_diff_scatter(top_dfs, contrast_map, cell_type, dataset_abbr, contrast1,
     scatter.update_layout(title=f"Contrast {diff_type} scatter")
 
     scatter_df = scatter_df[scatter_df[f'Significant_{treatment}'] & ~scatter_df[f'Significant_{control}']]
+    
+    
     scatter_cols = [diff_type, f'logFC_{treatment}', f'FDR_{treatment}', f'Significant_{treatment}',
-                               f'logFC_{control}', f'FDR_{control}', f'Significant_{control}']
-
+                        f'logFC_{control}', f'FDR_{control}', f'Significant_{control}']
+    
+    if diff_type == 'Pathway':
+        scatter_cols += [f'leading_edge_{treatment}',
+                         f'DE Genes In Pathway_{treatment}',
+                         f'Total Genes In Pathway_{treatment}']
+                         
+    print(scatter_cols, scatter_df.shape)
     return scatter, scatter_df[scatter_cols]
 
 
-def plot_umap(plot_df, color_map):
+def plot_umap(plot_df, color_map, title):
     """
     """
     fig = px.scatter(plot_df, x=0, y=1, opacity=0.5,
@@ -205,7 +217,35 @@ def plot_umap(plot_df, color_map):
                         "1": "UMAP 1",
                     },)
 
-    fig.update_layout(legend_font=dict(size=24))
+    fig.update_layout(legend_font=dict(size=24), title=title)
 
     return fig
+
+
+def overview_count_table(contrast_tuples, gene_de_dfs, dataset_name):
+    """
+    """
+    all_contrasts = [f'{x[0]}-{x[1]}' for x in contrast_tuples]
+    gene_contrasts = [x for x in list(gene_de_dfs.keys()) if any([c in x for c in all_contrasts]) and 'subset' in x]
+    cell_types = [x.split('_')[-1] for x in gene_contrasts]
+
+    count_dict = {}
+
+    for contrast in all_contrasts:
+        if 'None' in contrast: continue
+        count_dict[contrast] = {}
+        for cell_type in cell_types:
+            key = f'{dataset_name}__edgeR__{contrast}__{cell_type}'
+            if key in gene_de_dfs.keys():
+                sig_df = gene_de_dfs[key]
+                x = sig_df[(sig_df['FDR'] < .05) & (np.abs(sig_df['logFC']) > 1)]
+                up_cnt = x[x['logFC'] > 0].shape[0]
+                dwn_cnt = x[x['logFC'] < 0].shape[0]
+                count_dict[contrast][(cell_type, 'Up')] = up_cnt
+                count_dict[contrast][(cell_type, 'Down')] = dwn_cnt
+
+    df = pd.DataFrame(count_dict).T
+    df = df.astype(str)
+
+    return df
 

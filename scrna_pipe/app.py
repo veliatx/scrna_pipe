@@ -184,9 +184,14 @@ with st.expander(label='Overview', expanded=True):
     cell_df.reset_index(inplace=True)
     plot_df = pd.concat([plot_df, cell_df], axis=1)
 
-    umap = plotting.plot_umap(plot_df, color_map)
+    umap = plotting.plot_umap(plot_df, color_map, f'UMAP of {adata.shape[0]} cells')
 
     st.plotly_chart(umap, theme="streamlit")
+
+    overview_de_df = plotting.overview_count_table(focus_contrasts[dataset],
+        gene_de_dfs, dataset_abbr)
+    st.markdown('##### Number of DE genes per contrast')
+    st.dataframe(overview_de_df)
 
 
 with st.expander(label='Differential Expression', expanded=True):
@@ -391,6 +396,18 @@ with st.expander(label='Differential Comparison', expanded=True):
                     algorithm='gsva')
 
                 selected_pathway = plotly_events(scatter_path, override_height=1000, override_width=1400)
+                
+                col_map = {col: "{:.2E}" for col in scatter_path_df.columns if col[0:3] == 'FDR'}
+
+                st.dataframe(scatter_path_df.style.format(col_map))
+                csv = convert_df(scatter_path_df)
+                st.download_button(
+                        "Download Table",
+                        csv,
+                        f"pathways-diff_{contrast1}.csv",
+                        "text/csv",
+                        key='download-csv-diff-pathway'
+                )
 
                 try:
                     entry = scatter_path_df.iloc[int(selected_pathway[0]["pointIndex"])]

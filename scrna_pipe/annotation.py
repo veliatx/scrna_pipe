@@ -12,14 +12,21 @@ from celltypist import models
 from pathlib import Path
 
 
-def load_count_data(output_dir, sample_sheet_path, keys=['PBMC', '5hr']):
+def load_count_data(output_dir, sample_sheet_path, in_keys=['PBMC', '5hr'], out_keys=[]):
     """
     """
     sample_df = pd.read_csv(sample_sheet_path)
 
-    mask = sample_df['sample'].apply(lambda x: all(k in x for k in keys))
+    if in_keys != []:
+        mask = sample_df['sample'].apply(lambda x: all(k in x for k in in_keys) \
+                                         and not any(k in x for k in out_keys))
 
-    sample_df = sample_df[mask]
+        sample_df = sample_df[mask]
+        sample_name = '_'.join(in_keys)
+    else:
+        sample_name = 'all'
+
+
     samples = list(sample_df['sample'])
 
     adatas = {}
@@ -29,7 +36,6 @@ def load_count_data(output_dir, sample_sheet_path, keys=['PBMC', '5hr']):
         adat = sc.read_mtx(sample_dir.joinpath('matrix.mtx')).transpose()
         adatas[sample] = adat
 
-    sample_name = '_'.join(keys)
     adata = ad.concat(adatas, label="sample")
 
     feat_df = pd.read_csv(sample_dir.joinpath('features.tsv'), sep='\t', 
