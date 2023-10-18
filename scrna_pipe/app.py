@@ -211,7 +211,8 @@ with st.expander(label='Differential Expression', expanded=True):
     with col1:
         contrast = st.selectbox(
             'Choose a contrast',
-            [f'{x[0]} - {x[1]}' for x in focus_contrasts[dataset]]
+            [f'{x[0]} - {x[1]}' for x in focus_contrasts[dataset]],
+            index=3
         )
 
     if cell_type != 'All' and contrast != 'None - None':
@@ -323,7 +324,7 @@ with st.expander(label='Differential Expression', expanded=True):
                         st.image(network_image)
 
 
-            with pathway_tab:
+            with pathway_gsva_tab:
 
                 col9, col10 = st.columns(2)
 
@@ -347,12 +348,6 @@ with st.expander(label='Differential Expression', expanded=True):
                         key='download-csv-pathway'
                     )
 
-                col11, col12 = st.columns(2)
-
-                with col11:
-                    st.subheader('Top pathways')
-                    fig = plotting.plot_pathway_volcano(plot_gsva_df)
-                    selected_pathway = plotly_events(fig)
             
             with pathway_ora_tab:
                 st.subheader('Pathway Enrichment')
