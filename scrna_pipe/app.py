@@ -1,4 +1,5 @@
 import altair as alt
+import decoupler as dc
 import streamlit as st
 import seaborn as sns
 import pandas as pd
@@ -6,7 +7,6 @@ import numpy as np
 import scanpy as sc
 
 from pathlib import Path
-from scrna_pipe import differential
 from streamlit_echarts import st_echarts
 from streamlit_plotly_events import plotly_events
 
@@ -24,15 +24,14 @@ def load_anndata(adata_path):
     """
     adata = sc.read(adata_path)
     adata_dim = sc.read(adata_path.parent.joinpath(f'{adata_path.stem}_umap.h5ad'))
-    
-    #adata_pb = differential.load_anndata_pseudobulk(adata_path, overwrite=False)
-    #adata_pb = differential.process_adata_pbmc(adata_pb)    
 
     return adata, adata_dim#, adata_pb
 
 
 @st.cache_data
 def load_differential_dfs(adata_path):
+    """
+    """
     gene_de_dfs = {}
     gsva_de_dfs = {}
 
@@ -48,6 +47,17 @@ def load_differential_dfs(adata_path):
 @st.cache_data
 def convert_df(df):
    return df.to_csv(index=False).encode('utf-8')
+
+
+@st.cache_data
+def load_msigdb(pathway_db='reactome'):
+    """
+    """
+    msigdb = dc.get_resource('MSigDB')
+    msigdb_subset = msigdb[msigdb['collection']==pathway_db]
+    msigdb_subset = msigdb_subset[~msigdb_subset.duplicated(['geneset', 'genesymbol'])]
+
+    return msigdb_subset
 
 
 def load_gencode_map():
@@ -206,7 +216,7 @@ with st.expander(label='Differential Expression', expanded=True):
 
     if cell_type != 'All' and contrast != 'None - None':
 
-        gene_tab, pathway_tab = st.tabs(["Genes", "Pathways"])
+        gene_tab, pathway_gsva_tab, pathway_ora_tab = st.tabs(["Genes", "Pathways - GSVA", "Pathways - ORA"])
         
         gsva_key = f'{adata_paths[dataset].stem}__gsva__{contrast_map[contrast]}__{cell_type.replace("_", "")}'
         edger_key = f'{adata_paths[dataset].stem}__edgeR__{contrast_map[contrast]}__{cell_type.replace("_", "")}'
@@ -337,22 +347,62 @@ with st.expander(label='Differential Expression', expanded=True):
                         key='download-csv-pathway'
                     )
 
+                col11, col12 = st.columns(2)
+
+                with col11:
+                    st.subheader('Top pathways')
+                    fig = plotting.plot_pathway_volcano(plot_gsva_df)
+                    selected_pathway = plotly_events(fig)
+            
+            with pathway_ora_tab:
+                st.subheader('Pathway Enrichment')
+                pathway_db = st.selectbox(
+                    'Choose Pathway Source',
+                    ('reactome', 'hallmark', 'go_molecular_function', 'immunesigdb'), index=0)
+
+                col_map = {'gene': 'gene_symbol', 
+                           'logCPM': 'baseMean', 
+                           'logFC': 'log2FoldChange',
+                           '-Log10(FDR)': 'lfcSE',
+                           'PValue': 'stat',
+                           'FDR': 'padj'}
+                
+                results_df = plot_gene_df.copy()
+                results_df.rename(columns=col_map, inplace=True)
+                results_df.set_index('gene_symbol', inplace=True)
+
+                msigdb = load_msigdb(pathway_db)
+                
+                top_genes = results_df[results_df['padj'] < 0.05]
+
+                enr_pvals = dc.get_ora_df(
+                    df=top_genes,
+                    net=msigdb_subset,
+                    source='geneset',
+                    target='genesymbol'
+                )
+                
+                ax = dc.plot_dotplot(top_path_df, x='Combined score', y = 'Term', s='Odds ratio', c = 'FDR p-value', scale = 0.5, figsize=(7,10))
+
+                st.pyplot(ax)
+                
+
         else:
             st.write('Not enough cells to perform differential analysis.')
 
 
 with st.expander(label='Differential Comparison', expanded=True):
 
-    col11, col12 = st.columns(2)
+    col13, col14 = st.columns(2)
 
-    with col11:
+    with col13:
         contrast1 = st.selectbox(
             'Choose contrast #1',
             [f'{x[0]} - {x[1]}' for x in focus_contrasts[dataset]],
             index=3,
         )
 
-    with col12:
+    with col14:
         contrast2 = st.selectbox(
             'Choose contrast #2',
             [f'{x[0]} - {x[1]}' for x in focus_contrasts[dataset]],

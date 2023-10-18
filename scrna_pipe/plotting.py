@@ -203,7 +203,6 @@ def plot_diff_scatter(top_dfs, contrast_map, cell_type, dataset_abbr, contrast1,
                          f'DE Genes In Pathway_{treatment}',
                          f'Total Genes In Pathway_{treatment}']
                          
-    print(scatter_cols, scatter_df.shape)
     return scatter, scatter_df[scatter_cols]
 
 
