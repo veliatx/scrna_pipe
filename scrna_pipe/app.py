@@ -50,11 +50,18 @@ def convert_df(df):
 
 
 @st.cache_data
-def load_msigdb(pathway_db='reactome'):
+def load_msigdb():
     """
     """
-    msigdb = dc.get_resource('MSigDB')
-    msigdb_subset = msigdb[msigdb['collection']==pathway_db]
+    msigdb = pd.read_csv('../data/annotation/msigdb_dc_20231017.csv', index_col=0)
+    msigdb['geneset'] = msigdb.apply(lambda x: '_'.join(x.geneset.split('_')[1:]) if x.geneset[0:3] != 'GSE' else x.geneset, axis=1)
+    return msigdb
+
+
+def load_msigdb_subset(msigdb_df, pathway_db='reactome_pathways'):
+    """
+    """
+    msigdb_subset = msigdb_df[msigdb_df['collection']==pathway_db]
     msigdb_subset = msigdb_subset[~msigdb_subset.duplicated(['geneset', 'genesymbol'])]
 
     return msigdb_subset
@@ -76,6 +83,7 @@ output_dir = Path('/home/ec2-user/scrna_pipe/data')
 output_dir_plate1 = Path('/home/ec2-user/velia-analyses-dev/VAP_20230711_single_cell_moa/outputs/run_6')
 output_dir_plate2 = Path('/home/ec2-user/velia-analyses-dev/VAP_20230919_single_cell_pbmc_hits/outputs/run_2')
 
+msigdb = load_msigdb()
 
 adata_paths = {
     'PBMC - plate 1': output_dir.joinpath('analysis_plate_1', 'PBMC_coarse.h5ad'),
@@ -350,36 +358,62 @@ with st.expander(label='Differential Expression', expanded=True):
 
             
             with pathway_ora_tab:
+                
+
+                colx, coly = st.columns(2)
+                col11, col12 = st.columns(2)
+
                 st.subheader('Pathway Enrichment')
-                pathway_db = st.selectbox(
-                    'Choose Pathway Source',
-                    ('reactome', 'hallmark', 'go_molecular_function', 'immunesigdb'), index=0)
-
-                col_map = {'gene': 'gene_symbol', 
-                           'logCPM': 'baseMean', 
-                           'logFC': 'log2FoldChange',
-                           '-Log10(FDR)': 'lfcSE',
-                           'PValue': 'stat',
-                           'FDR': 'padj'}
                 
-                results_df = plot_gene_df.copy()
-                results_df.rename(columns=col_map, inplace=True)
-                results_df.set_index('gene_symbol', inplace=True)
+                with colx:
 
-                msigdb = load_msigdb(pathway_db)
+                    pathway_db = st.selectbox(
+                        'Choose Pathway Source',
+                        ('reactome_pathways', 'hallmark', 'pid_pathways', 'kegg_pathways',
+                        'go_biological_process', 'go_molecular_function', 'immunesigdb'), index=0)
+
+                    col_map = {'gene': 'gene_symbol', 
+                            'logCPM': 'baseMean', 
+                            'logFC': 'log2FoldChange',
+                            '-Log10(FDR)': 'lfcSE',
+                            'PValue': 'stat',
+                            'FDR': 'padj'}
+                    
+                    results_df = plot_gene_df.copy()
+                    results_df.rename(columns=col_map, inplace=True)
+                    results_df.set_index('gene_symbol', inplace=True)
+
+                    msigdb_subset = load_msigdb_subset(msigdb, pathway_db)
                 
-                top_genes = results_df[results_df['padj'] < 0.05]
+                with col11:
+                    top_genes = results_df[results_df['padj'] < 0.05]
 
-                enr_pvals = dc.get_ora_df(
-                    df=top_genes,
-                    net=msigdb_subset,
-                    source='geneset',
-                    target='genesymbol'
-                )
-                
-                ax = dc.plot_dotplot(top_path_df, x='Combined score', y = 'Term', s='Odds ratio', c = 'FDR p-value', scale = 0.5, figsize=(7,10))
+                    enr_pvals = dc.get_ora_df(
+                        df=top_genes,
+                        net=msigdb_subset,
+                        source='geneset',
+                        target='genesymbol'
+                    )
 
-                st.pyplot(ax)
+                    top_path_df = enr_pvals.sort_values(by='FDR p-value')[0:20]
+
+                    ax = dc.plot_dotplot(top_path_df, x='Combined score', y = 'Term', s='Odds ratio',
+                                        c='FDR p-value', scale=0.5, return_fig=True)
+                    ax.set_size_inches((5, 8))
+
+                    st.pyplot(ax, use_container_width=True)
+
+                with col12:
+                    st.dataframe(top_path_df.style.format({"FDR": "{:.2E}"}))
+                    csv = convert_df(top_path_df)
+                    st.download_button(
+                        "Download Table",
+                        csv,
+                        f"pathways-ora_{gsva_key}.csv",
+                        "text/csv",
+                        key='download-csv-pathway-ora'
+                    )
+
                 
 
         else:
