@@ -3,6 +3,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import matplotlib.pyplot as plt
+import decoupler as dc
 import seaborn as sns
 import scanpy as sc
 import pandas as pd
@@ -434,6 +435,56 @@ def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path, gene_sets, pathway
             path_table_df.to_csv(gsva_data_path.joinpath('gsva', gsva_file_name))
 
     return gsva_dfs
+
+
+def run_ora(adata_path, msigdb, gene_de_dfs):
+    """
+    """
+    
+    col_map = {'gene': 'gene_symbol', 
+               'logCPM': 'baseMean', 
+               'logFC': 'log2FoldChange',
+               '-Log10(FDR)': 'lfcSE',
+               'PValue': 'stat',
+               'FDR': 'padj'}
+
+    ora_dfs = {}
+
+    msigdb['geneset'] = msigdb.apply(lambda x: '_'.join(x.geneset.split('_')[1:]) if x.geneset[0:3] != 'GSE' else x.geneset, axis=1)
+
+    for collection in msigdb['collection'].unique():
+
+        msigdb_subset = msigdb[msigdb['collection']==collection].copy()
+        msigdb_subset = msigdb_subset[~msigdb_subset.duplicated(['geneset', 'genesymbol'])]
+
+        for contrast in gene_de_dfs.keys():
+            results_df = gene_de_dfs[contrast].copy()
+
+            results_df.rename(columns=col_map, inplace=True)
+            results_df.set_index('gene_symbol', inplace=True)
+            top_genes = results_df[results_df['padj'] < 0.05]
+
+            # Run ora
+            enr_pvals = dc.get_ora_df(
+                df=top_genes,
+                net=msigdb_subset,
+                source='geneset',
+                target='genesymbol'
+            )
+
+            top_path_df = enr_pvals.sort_values(by='FDR p-value')
+
+            ora_name = contrast.replace('_edgeR_', f'_ora-{collection}_')
+
+            outpath = adata_path.parent.joinpath('ora')
+            if not outpath.exists():
+                outpath.mkdir()
+
+            top_path_df.to_csv(adata_path.parent.joinpath('ora', f'{ora_name}.csv'))
+
+            ora_dfs[ora_name] = top_path_df
+
+    return ora_dfs
 
 
 def load_gsva_dfs(adata_path):

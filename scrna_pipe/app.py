@@ -34,6 +34,7 @@ def load_differential_dfs(adata_path):
     """
     gene_de_dfs = {}
     gsva_de_dfs = {}
+    ora_de_dfs = {}
 
     for df_path in adata_path.parent.joinpath('edgeR').glob('*.csv'):
         gene_de_dfs[df_path.stem] = pd.read_csv(df_path, index_col=0) 
@@ -41,30 +42,15 @@ def load_differential_dfs(adata_path):
     for df_path in adata_path.parent.joinpath('gsva').glob('*.csv'):
         gsva_de_dfs[df_path.stem] = pd.read_csv(df_path, index_col=0) 
 
-    return gene_de_dfs, gsva_de_dfs
+    for df_path in adata_path.parent.joinpath('ora').glob('*.csv'):
+        ora_de_dfs[df_path.stem] = pd.read_csv(df_path, index_col=0) 
+
+    return gene_de_dfs, gsva_de_dfs, ora_de_dfs
 
 
 @st.cache_data
 def convert_df(df):
    return df.to_csv(index=False).encode('utf-8')
-
-
-@st.cache_data
-def load_msigdb():
-    """
-    """
-    msigdb = pd.read_csv('../data/annotation/msigdb_dc_20231017.csv', index_col=0)
-    msigdb['geneset'] = msigdb.apply(lambda x: '_'.join(x.geneset.split('_')[1:]) if x.geneset[0:3] != 'GSE' else x.geneset, axis=1)
-    return msigdb
-
-
-def load_msigdb_subset(msigdb_df, pathway_db='reactome_pathways'):
-    """
-    """
-    msigdb_subset = msigdb_df[msigdb_df['collection']==pathway_db]
-    msigdb_subset = msigdb_subset[~msigdb_subset.duplicated(['geneset', 'genesymbol'])]
-
-    return msigdb_subset
 
 
 def load_gencode_map():
@@ -82,8 +68,6 @@ def load_gencode_map():
 output_dir = Path('/home/ec2-user/scrna_pipe/data')
 output_dir_plate1 = Path('/home/ec2-user/velia-analyses-dev/VAP_20230711_single_cell_moa/outputs/run_6')
 output_dir_plate2 = Path('/home/ec2-user/velia-analyses-dev/VAP_20230919_single_cell_pbmc_hits/outputs/run_2')
-
-msigdb = load_msigdb()
 
 adata_paths = {
     'PBMC - plate 1': output_dir.joinpath('analysis_plate_1', 'PBMC_coarse.h5ad'),
@@ -174,7 +158,7 @@ with st.expander(label='Overview', expanded=True):
         )
         adata, adata_dim = load_anndata(adata_paths[dataset])
 
-        gene_de_dfs, gsva_de_dfs = load_differential_dfs(adata_paths[dataset])
+        gene_de_dfs, gsva_de_dfs, ora_de_dfs = load_differential_dfs(adata_paths[dataset])
 
         cell_types = ['Macrophages', 'T cells', 'B cells', 'Monocytes', 'ILC', 'DC']
         #cell_types = list(set(adata.obs['cell_type']))
@@ -370,35 +354,17 @@ with st.expander(label='Differential Expression', expanded=True):
                     pathway_db = st.selectbox(
                         'Choose Pathway Source',
                         ('reactome_pathways', 'hallmark', 'pid_pathways', 'kegg_pathways',
-                        'go_biological_process', 'go_molecular_function', 'immunesigdb'), index=0)
-
-                    col_map = {'gene': 'gene_symbol', 
-                            'logCPM': 'baseMean', 
-                            'logFC': 'log2FoldChange',
-                            '-Log10(FDR)': 'lfcSE',
-                            'PValue': 'stat',
-                            'FDR': 'padj'}
-                    
-                    results_df = plot_gene_df.copy()
-                    results_df.rename(columns=col_map, inplace=True)
-                    results_df.set_index('gene_symbol', inplace=True)
-
-                    msigdb_subset = load_msigdb_subset(msigdb, pathway_db)
+                         'go_biological_process', 'go_molecular_function', 'immunesigdb',
+                         'chemical_and_genetic_perturbations', 'tf_targets_gtrf', 
+                         'vaccine_response', 'wikipathways'), index=0)
                 
                 with col11:
-                    top_genes = results_df[results_df['padj'] < 0.05]
+                    
+                    ora_name = edger_key.replace('_edgeR_', f'_ora-{pathway_db}_')
 
-                    enr_pvals = dc.get_ora_df(
-                        df=top_genes,
-                        net=msigdb_subset,
-                        source='geneset',
-                        target='genesymbol'
-                    )
-
-                    top_path_df = enr_pvals.sort_values(by='FDR p-value')[0:20]
-
-                    ax = dc.plot_dotplot(top_path_df, x='Combined score', y = 'Term', s='Odds ratio',
-                                        c='FDR p-value', scale=0.5, return_fig=True)
+                    top_path_df = ora_de_dfs[ora_name]
+                    ax = dc.plot_dotplot(top_path_df[0:20], x='Combined score', y = 'Term', s='Odds ratio',
+                                         c='FDR p-value', scale=0.5, return_fig=True)
                     ax.set_size_inches((5, 8))
 
                     st.pyplot(ax, use_container_width=True)
@@ -413,8 +379,6 @@ with st.expander(label='Differential Expression', expanded=True):
                         "text/csv",
                         key='download-csv-pathway-ora'
                     )
-
-                
 
         else:
             st.write('Not enough cells to perform differential analysis.')
