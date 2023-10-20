@@ -244,7 +244,7 @@ def overview_count_table(contrast_tuples, gene_de_dfs, dataset_name):
                 count_dict[contrast][(cell_type, 'Down')] = dwn_cnt
 
     df = pd.DataFrame(count_dict).T
-    df = df.astype(str)
+    df = df.astype(float)
 
     return df
 

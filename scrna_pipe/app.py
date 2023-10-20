@@ -130,6 +130,12 @@ focus_contrasts = {
 
 datasets = ['PBMC - plate 1', 'PBMC 5hr - plate 2']#'PBMC', 'PBMC 5hr', 'PBMC 24hr']#, 'A549', 'HCT116']
 
+def highlight_with_gradient(s, cmap='Blues'):
+    """
+    Highlight the dataframe using a gradient based on the 'cmap' color map.
+    """
+    return [f'background-color: {col}' for col in s.map(cmap)]
+
 
 color_map =  {
     "Macrophages": "#1f77b4",  
@@ -170,7 +176,6 @@ with st.expander(label='Overview', expanded=True):
             cell_types, index=4
         )
 
-
         contrast_map = {f'{x[0]} - {x[1]}': f'{x[0]}-{x[1]}' for x in focus_contrasts[dataset]}
         dataset_abbr = adata_paths[dataset].stem
 
@@ -193,7 +198,14 @@ with st.expander(label='Overview', expanded=True):
     overview_de_df = plotting.overview_count_table(focus_contrasts[dataset],
         gene_de_dfs, dataset_abbr)
     st.markdown('##### Number of DE genes per contrast')
-    st.dataframe(overview_de_df)
+
+    #styled_df = overview_de_df.style.apply(overview_de_df, cmap='Blues').to_html(escape=False)
+
+    #st.write(styled_df, unsafe_allow_html=True)
+    overview_de_df = overview_de_df.astype(float)
+    overview_de_df.columns = [f'{x[0]}: {x[1]}' for x in overview_de_df.columns]
+
+    st.dataframe(overview_de_df.style.background_gradient(cmap='Blues'))
 
 
 with st.expander(label='Differential Expression', expanded=True):
@@ -355,7 +367,7 @@ with st.expander(label='Differential Expression', expanded=True):
                         'Choose Pathway Source',
                         ('reactome_pathways', 'hallmark', 'pid_pathways', 'kegg_pathways',
                          'go_biological_process', 'go_molecular_function', 'immunesigdb',
-                         'chemical_and_genetic_perturbations', 'tf_targets_gtrf', 
+                         'chemical_and_genetic_perturbations', 
                          'vaccine_response', 'wikipathways'), index=0)
                 
                 with col11:
