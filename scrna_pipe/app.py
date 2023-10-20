@@ -375,8 +375,10 @@ with st.expander(label='Differential Expression', expanded=True):
                     ora_name = edger_key.replace('_edgeR_', f'_ora-{pathway_db}_')
 
                     top_path_df = ora_de_dfs[ora_name]
+                    scale_param = 3/np.max(top_path_df['Odds ratio'])
+                    
                     ax = dc.plot_dotplot(top_path_df[0:20], x='Combined score', y = 'Term', s='Odds ratio',
-                                         c='FDR p-value', scale=0.5, return_fig=True)
+                                         c='FDR p-value', scale=scale_param, return_fig=True)
                     ax.set_size_inches((5, 8))
 
                     st.pyplot(ax, use_container_width=True)
