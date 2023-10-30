@@ -117,7 +117,7 @@ def run_celltypist(adata, model_name="Immune_All_High.pkl"):
     """
     """
     adata_celltypist = adata.copy()  # make a copy of our adata
-    adata_celltypist.X = adata.raw.X  # set adata.X to raw counts
+    adata_celltypist.X = adata.X  # set adata.X to raw counts
     sc.pp.normalize_per_cell(
         adata_celltypist, counts_per_cell_after=10**4
     )  # normalize to 10,000 counts per cell

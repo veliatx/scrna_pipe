@@ -45,21 +45,6 @@ def extract_cluster_map(de_df, adata, cell_type, contrast):
     except:
         de_genes = list(de_df['gene'])
 
-    adata.obs['sample'] = adata.obs.apply(lambda x: x['sample'].replace('-','_'), axis=1)
-
-    adata.obs["cell_type"] = [ct.replace(" ", "_") for ct in adata.obs["cell_type"]]
-    adata.obs["cell_type"] = [ct.replace("+", "") for ct in adata.obs["cell_type"]]
-    adata.obs["replicate"] = adata.obs.apply(lambda x: x['sample'].split('_')[-1], axis=1)
-    adata.obs["label"] = adata.obs.apply(lambda x: '_'.join(x['sample'].split('_')[:-1]), axis=1)
-
-    adata.obs["replicate"] = adata.obs["replicate"].astype("category")
-    adata.obs["label"] = adata.obs["label"].astype("category")
-    adata.obs["sample"] = adata.obs["sample"].astype("category")
-    adata.obs["cell_type"] = adata.obs["cell_type"].astype("category")
-
-    sc.pp.normalize_total(adata, target_sum=1e4)
-    sc.pp.log1p(adata)
-
     plot_adata = adata[(adata.obs['cell_type'] == cell_type) &\
                        (adata.obs['label'].isin(list(contrast)))]
     
@@ -100,6 +85,8 @@ def assign_size(row, treatment, control):
         return 10
     elif (row[f'Significant_{treatment}'] and row[f'Significant_{control}']):
         return 5
+    elif (not row[f'Significant_{treatment}'] and row[f'Significant_{control}']):
+        return 3
     elif (row[f'Significant_{control}']):
         return 3
     else:
@@ -135,7 +122,7 @@ def plot_pathway_volcano(plot_gsva_df):
     """
     fig = px.scatter(plot_gsva_df, x='logFC', y='-Log10(FDR)', opacity=0.5,
                     color="Significant", color_discrete_map={True: "blue", False: "red"},
-                    size='point_size', size_max=5, template='plotly_white',
+                    size='point_size', size_max=10, template='plotly_white',
                     labels={"logFC": "Log2(FoldChange)"},
                     hover_data=['Pathway'])
 
@@ -149,9 +136,9 @@ def plot_gene_volcano(plot_gene_df):
     """
     fig = px.scatter(plot_gene_df, x='logFC', y='-Log10(FDR)', opacity=0.5,
                     color="Significant", color_discrete_map={True: "blue", False: "red"},
-                    size='point_size', size_max=5, template='plotly_white',
+                    size='point_size', size_max=10, template='plotly_white',
                     labels={"logFC": "Log2(FoldChange)"},
-                    hover_data=['gene'])
+                    hover_data=['gene'], render_mode='webgl')
 
     fig.update_layout(legend_font=dict(size=18))
 
@@ -173,27 +160,30 @@ def plot_diff_scatter(top_dfs, contrast_map, cell_type, dataset_abbr, contrast1,
     treatment = contrast1.split('-')[0].strip()
     control = contrast2.split('-')[0].strip()
 
+    print(treatment, control)
+
     if diff_type == 'gene':
         df1[f'Significant'] = df1.apply(lambda x: x.FDR < .05 and np.abs(x.logFC) > 1, axis=1)
         df2[f'Significant'] = df2.apply(lambda x: x.FDR < .05 and np.abs(x.logFC) > 1, axis=1)
+        df1 = df1[df1['logCPM'] > 5]
+        df2 = df2[df2['logCPM'] > 5]
     else:
         df1[f'Significant'] = df1.apply(lambda x: x.FDR < .05, axis=1)
         df2[f'Significant'] = df2.apply(lambda x: x.FDR < .05, axis=1)
         
     scatter_df = df1.merge(df2, left_on=diff_type, right_on=diff_type, suffixes=(f'_{treatment}', f'_{control}'))
 
-    scatter_df['size'] = scatter_df.apply(lambda x:  assign_size(x, treatment, control), axis=1)
-    scatter_df['opacity'] = scatter_df.apply(lambda x:  assign_opacity(x, treatment, control), axis=1)
+    scatter_df['size'] = scatter_df.apply(lambda x: assign_size(x, treatment, control), axis=1)
+    #scatter_df['opacity'] = scatter_df.apply(lambda x:  assign_opacity(x, treatment, control), axis=1)
     
     scatter = px.scatter(scatter_df, x=f'logFC_{treatment}', y=f'logFC_{control}', color=f'Significant_{treatment}', 
                         color_discrete_map={True: "blue", False: "red"},
-                        size_max=20, template='plotly_white', opacity=scatter_df['opacity'], size=scatter_df['size'],
-                        hover_data=[diff_type, 'opacity', f'Significant_{treatment}', f'Significant_{control}'])
+                        template='plotly_white', opacity=.6, size=scatter_df['size'],
+                        hover_data=[diff_type, f'Significant_{treatment}', f'Significant_{control}'])
 
     scatter.update_layout(title=f"Contrast {diff_type} scatter")
 
     scatter_df = scatter_df[scatter_df[f'Significant_{treatment}'] & ~scatter_df[f'Significant_{control}']]
-    
     
     scatter_cols = [diff_type, f'logFC_{treatment}', f'FDR_{treatment}', f'Significant_{treatment}',
                         f'logFC_{control}', f'FDR_{control}', f'Significant_{control}']
@@ -214,7 +204,7 @@ def plot_umap(plot_df, color_map, title):
                     labels={
                         "0": "UMAP 2",
                         "1": "UMAP 1",
-                    },)
+                    }, height=800)
 
     fig.update_layout(legend_font=dict(size=24), title=title)
 
@@ -225,19 +215,26 @@ def overview_count_table(contrast_tuples, gene_de_dfs, dataset_name):
     """
     """
     all_contrasts = [f'{x[0]}-{x[1]}' for x in contrast_tuples]
-    gene_contrasts = [x for x in list(gene_de_dfs.keys()) if any([c in x for c in all_contrasts]) and 'subset' in x]
+    gene_contrasts = [x for x in list(gene_de_dfs.keys()) if any([c in x for c in all_contrasts])]
     cell_types = [x.split('_')[-1] for x in gene_contrasts]
 
     count_dict = {}
+
+    print(all_contrasts)
+    print(gene_contrasts)
 
     for contrast in all_contrasts:
         if 'None' in contrast: continue
         count_dict[contrast] = {}
         for cell_type in cell_types:
             key = f'{dataset_name}__edgeR__{contrast}__{cell_type}'
+
             if key in gene_de_dfs.keys():
+
                 sig_df = gene_de_dfs[key]
-                x = sig_df[(sig_df['FDR'] < .05) & (np.abs(sig_df['logFC']) > 1)]
+                x = sig_df[(sig_df['FDR'] < .05) &
+                           (np.abs(sig_df['logFC']) > 1) &
+                           (sig_df['logCPM'] > 5)]
                 up_cnt = x[x['logFC'] > 0].shape[0]
                 dwn_cnt = x[x['logFC'] < 0].shape[0]
                 count_dict[contrast][(cell_type, 'Up')] = up_cnt

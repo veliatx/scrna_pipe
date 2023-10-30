@@ -141,11 +141,11 @@ def load_anndata_pseudobulk(adata_path, overwrite=False):
     return adata_pb
 
 
-def process_adata_pbmc(adata_pb):
+def process_adata_pbmc(adata_pb, groupby):
     """
     """
-    adata_pb.obs['cell_type'] = adata_pb.obs.apply(lambda x: x.cell_type.replace('_', ''), axis=1)
-    adata_pb.obs['new_index'] = adata_pb.obs.apply(lambda x: x.cell_type + '_' + '_'.join(x.name.split('_')[:-1]), axis=1)
+    adata_pb.obs[groupby] = adata_pb.obs.apply(lambda x: x[groupby].replace('_', ''), axis=1)
+    adata_pb.obs['new_index'] = adata_pb.obs.apply(lambda x: x[groupby] + '_' + '_'.join(x.name.split('_')[:-1]), axis=1)
     adata_pb.obs.set_index('new_index', inplace=True)
 
     adata_pb.layers['counts'] = adata_pb.X.copy()
@@ -196,25 +196,26 @@ def r_fit_model(adata_pb):
     fit_model <- function(adata_){
         # create an edgeR object with counts and grouping factor
         y <- DGEList(assay(adata_, "X"), group = colData(adata_)$label)
-        # filter out genes with low counts
+
         print("Dimensions before subsetting:")
         print(dim(y))
         print("")
-        keep <- filterByExpr(y)
+        keep <- filterByExpr(y, min.count = 20, min.total.count = 30, min.prop=.9)
         y <- y[keep, , keep.lib.sizes=FALSE]
         print("Dimensions after subsetting:")
         print(dim(y))
         print("")
-        # normalize
+
         y <- calcNormFactors(y)
-        # create a vector that is concatentation of condition and cell type that we will later use with contrasts
+        
         group <- paste0(colData(adata_)$label, ".", colData(adata_)$cell_type)
         replicate <- colData(adata_)$replicate
-        # create a design matrix: here we have multiple donors so also consider that in the design matrix
         design <- model.matrix(~ 0 + group + replicate)
-        # estimate dispersion
+
+        print("Estimate dispersion")
         y <- estimateDisp(y, design = design)
-        # fit the model
+
+        print("Fit the model")
         fit <- glmQLFit(y, design)
         return(list("fit"=fit, "design"=design, "y"=y))
     }
@@ -261,7 +262,7 @@ def load_gene_set():
     return gene_sets, pathway_df
 
 
-def r_run_edger(adata_pb, focus_contrasts, adata_path):
+def r_run_edger(adata_pb, focus_contrasts, adata_path, groupby):
     """
     """
             
@@ -269,7 +270,7 @@ def r_run_edger(adata_pb, focus_contrasts, adata_path):
 
     contrast_str = ''
     contrast_map = {}
-    cell_types = set(adata_pb.obs['cell_type'])
+    cell_types = set(adata_pb.obs[groupby])
     cons_fine = [x[5:] for x in fit_cols]
 
     for c1, c2 in focus_contrasts:
@@ -331,7 +332,8 @@ def r_run_edger(adata_pb, focus_contrasts, adata_path):
     return edgeR_dfs
 
 
-def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path, gene_sets, pathway_df, de_gene_tables, method='gsva'):
+def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path, gene_sets, pathway_df, de_gene_tables, 
+               method='gsva', groupby='cell_type'):
     """
     """
             
@@ -349,7 +351,7 @@ def r_run_gsva(adata_pb, cpm_df, focus_contrasts, adata_path, gene_sets, pathway
     contrast_list = []
 
     all_contrasts = set(['_'.join(x.split('_')[0:-1]) for x in cpm_df.columns])
-    cell_types = set(adata_pb.obs['cell_type'])
+    cell_types = set(adata_pb.obs[groupby])
 
 
     for c1, c2 in focus_contrasts:
@@ -464,25 +466,29 @@ def run_ora(adata_path, msigdb, gene_de_dfs):
             results_df.set_index('gene_symbol', inplace=True)
             top_genes = results_df[results_df['padj'] < 0.05]
 
-            # Run ora
-            enr_pvals = dc.get_ora_df(
-                df=top_genes,
-                net=msigdb_subset,
-                source='geneset',
-                target='genesymbol'
-            )
+            try:
+                ora_name = contrast.replace('_edgeR_', f'_ora-{collection}_')
 
-            top_path_df = enr_pvals.sort_values(by='FDR p-value')
+                # Run ora
+                enr_pvals = dc.get_ora_df(
+                    df=top_genes,
+                    net=msigdb_subset,
+                    source='geneset',
+                    target='genesymbol'
+                )
 
-            ora_name = contrast.replace('_edgeR_', f'_ora-{collection}_')
+                top_path_df = enr_pvals.sort_values(by='FDR p-value')
 
-            outpath = adata_path.parent.joinpath('ora')
-            if not outpath.exists():
-                outpath.mkdir()
 
-            top_path_df.to_csv(adata_path.parent.joinpath('ora', f'{ora_name}.csv'))
+                outpath = adata_path.parent.joinpath('ora')
+                if not outpath.exists():
+                    outpath.mkdir()
 
-            ora_dfs[ora_name] = top_path_df
+                top_path_df.to_csv(adata_path.parent.joinpath('ora', f'{ora_name}.csv'))
+
+                ora_dfs[ora_name] = top_path_df
+            except:
+                print(ora_name)
 
     return ora_dfs
 
