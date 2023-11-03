@@ -6,14 +6,15 @@ import pandas as pd
 import numpy as np
 import scanpy as sc
 
+import pickle
+
 from pathlib import Path
 from streamlit_echarts import st_echarts
 from streamlit_plotly_events import plotly_events
 
 import plotly.graph_objects as go
 
-from scrna_pipe import plotting
-#from veliadb.base import Session, Gene
+from scrna_pipe import plotting, utils
 
 st.set_page_config(layout="wide")
 
@@ -22,10 +23,13 @@ st.set_page_config(layout="wide")
 def load_anndata(adata_path):
     """
     """
-    adata = sc.read(adata_path)
-    adata_dim = sc.read(adata_path.parent.joinpath(f'{adata_path.stem}_umap.h5ad'))
-
-    return adata, adata_dim#, adata_pb
+    adata = sc.read(adata_path.parent.joinpath(f'{adata_path.stem}_processed.h5ad'))
+    adata_dim = sc.read(adata_path.parent.joinpath(f'{adata_path.stem}_processed_umap.h5ad'))
+    
+    with open(adata_path.parent.joinpath(f'{adata_path.stem}_cpm.pkl'), 'rb') as f:
+        cpm_df = pickle.load(f)
+    
+    return adata, adata_dim, cpm_df
 
 
 @st.cache_data
@@ -60,11 +64,13 @@ output_dir_plate2 = Path('/home/ec2-user/velia-analyses-dev/VAP_20230919_single_
 output_dir_plate3 = Path('/home/ec2-user/velia-analyses-dev/VAP_20231010_single_cell_plate_3/outputs/run_2')
 
 adata_paths = {
-    'PBMC - plate 1': output_dir.joinpath('analysis_plate_1', 'PBMC_coarse.h5ad'),
+    #'PBMC - plate 1': output_dir.joinpath('analysis_plate_1', 'PBMC_coarse.h5ad'),
     #'PBMC 24hr': output_dir.joinpath('analysis', '24hr_coarse.h5ad'),
-    'PBMC 5hr - plate 2': output_dir.joinpath('analysis_plate_2', '5hr_coarse_subset.h5ad'),
+    #'PBMC 5hr - plate 2': output_dir.joinpath('analysis_plate_2', '5hr_coarse_subset.h5ad'),
     'PBMC 5hr R848 - aggregate': output_dir_plate3.joinpath('analysis', '5hr_pbmc_R848_scvi'),
+    'PBMC 24hr R848 - aggregate': output_dir_plate3.joinpath('analysis', '24hr_pbmc_R848_scvi'),
     'PBMC 5hr PAM3 - aggregate': output_dir_plate3.joinpath('analysis', '5hr_pbmc_PAM3_scvi'),
+
     #'24hr': output_dir.joinpath('analysis', '24hr_coarse.h5ad'),
 }
 
@@ -142,6 +148,22 @@ focus_contrasts = {
         ('VTX0850805__5hr_', 'Mock__5hr_'),
 
     ],
+    'PBMC 24hr R848 - aggregate': [
+        ('None', 'None'),
+        
+        ('Mock__R848_24hr_', 'Mock__24hr_'),
+        ('IL10__24hr_', 'Mock__24hr_'),
+        ('IL10__R848_24hr_', 'Mock__R848_24hr_'),
+        
+        ('VTX0851359__24hr_', 'Mock__24hr_'),
+        ('VTX0851359__R848_24hr_', 'Mock__R848_24hr_'),
+        ('VTX0851359__R848_24hr_', 'Mock__24hr_'),
+        
+        ('VTX0852555__24hr_', 'Mock__24hr_'),
+        ('VTX0852555__R848_24hr_', 'Mock__R848_24hr_'),
+        ('VTX0852555__R848_24hr_', 'Mock__24hr_'),
+        
+    ],
     '24hr': [
         ('None', 'None'),
         ('Mock__R848_24hr_', 'Mock__Fc_1uM_24hr_'),
@@ -155,13 +177,9 @@ focus_contrasts = {
 }
 
 
-datasets = ['PBMC - plate 1', 'PBMC 5hr - plate 2', 'PBMC 5hr R848 - aggregate', 'PBMC 5hr PAM3 - aggregate']
-
-def highlight_with_gradient(s, cmap='Blues'):
-    """
-    Highlight the dataframe using a gradient based on the 'cmap' color map.
-    """
-    return [f'background-color: {col}' for col in s.map(cmap)]
+datasets = ['PBMC - plate 1', 'PBMC 5hr - plate 2', 
+            'PBMC 5hr R848 - aggregate', 'PBMC 24hr R848 - aggregate', 'PBMC 5hr PAM3 - aggregate',
+            ]
 
 
 color_map =  {
@@ -190,27 +208,29 @@ color_map =  {
 st.header('Single Cell Browser')
 
 with st.expander(label='Overview', expanded=True):
-
     col0, _ = st.columns(2)
 
-    #with col0:
     dataset = st.selectbox(
         'Choose a dataset',
         datasets, index=2,
     )
-    adata, adata_dim = load_anndata(adata_paths[dataset])
+    adata, adata_dim, cpm_dfs = load_anndata(adata_paths[dataset])
 
     gene_de_dfs, gsva_de_dfs, ora_de_dfs = load_differential_dfs(adata_paths[dataset])
 
-    cell_types = ['Monocytes', 'B cells', 'T cells', 'NK cells']
-    #cell_types = list(set(adata.obs['cell_type']))
-    #cell_types.sort()
+    cell_types = list(set(adata.obs['cell_type_display']))
+    cell_types.sort()
     cell_types.insert(0, 'All')
 
     cell_type = st.selectbox(
         'Choose a cell type',
-        cell_types, index=1
+        cell_types, index=cell_types.index('T cells'),
+        key='cell_type_select'
     )
+
+#umap_tab, diff_tab, diff_compare_tab = st.tabs(["Cell types", "Differential", "Differential comparison"])
+
+with st.expander(label='Cell Type Annotation', expanded=True):
 
     contrast_map = {f'{x[0]} - {x[1]}': f'{x[0]}-{x[1]}' for x in focus_contrasts[dataset]}
     dataset_abbr = adata_paths[dataset].stem
@@ -223,7 +243,7 @@ with st.expander(label='Overview', expanded=True):
     cell_type = cell_type.replace(' ', '')
 
     plot_df = pd.DataFrame(adata_dim.obsm['X_umap'])
-    cell_df = pd.DataFrame(adata_dim.obs['cell_type'])
+    cell_df = pd.DataFrame(adata_dim.obs['cell_type_display'])
     cell_df.reset_index(inplace=True)
     plot_df = pd.concat([plot_df, cell_df], axis=1)
 
@@ -231,10 +251,20 @@ with st.expander(label='Overview', expanded=True):
 
     st.plotly_chart(umap, theme="streamlit", use_container_width=True)
 
+    st.markdown('##### Cell type percentages')
+    cell_type_df = pd.DataFrame(adata_dim.obs.groupby('cell_type').size()/adata_dim.obs.shape[0], columns=['Cell Type %']).T
+    cell_type_df.sort_values(by='Cell Type %', axis=1, ascending=False, inplace=True)
+    st.dataframe(cell_type_df.style.format("{:.2%}"))
+
+    st.markdown('##### Cell type counts')
+    cell_type_detail_df = utils.overview_cell_type_table(adata_dim)
+    st.dataframe(cell_type_detail_df)
+
     st.markdown('##### Number of DE genes per contrast')
-    overview_de_df = plotting.overview_count_table(focus_contrasts[dataset],
+    overview_de_df = utils.overview_de_count_table(focus_contrasts[dataset],
         gene_de_dfs, dataset_abbr)
 
+    overview_de_df.replace([np.inf, -np.inf, np.nan], 0, inplace=True)
     overview_de_df = overview_de_df.astype(int)
     overview_de_df.columns = [f'{x[0]}: {x[1]}' for x in overview_de_df.columns]
 
@@ -272,33 +302,78 @@ with st.expander(label='Differential Expression', expanded=True):
 
             with gene_tab:
 
-                col2, col3 = st.columns(2)
+                with st.container():
+                    st.subheader('Gene Volcano Plot')
+                    select_gene_df = plot_gene_df.copy()
 
-                #with col2:
-                st.subheader('Gene Volcano Plot')
-                select_gene_df = plot_gene_df.copy()
-
-                fig = plotting.plot_gene_volcano(select_gene_df)
+                    fig = plotting.plot_gene_volcano(select_gene_df)
+                    
+                    selected_points = plotly_events(fig)
                 
-                #st.plotly_chart(fig, use_container_width=True)
-                selected_points = plotly_events(fig)
+                col2, col3 = st.columns(2)
+                
+                with col2:
+                    st.subheader('Gene DE Table')
+                    gene_cols = ['gene', 'logFC', 'FDR', 'logCPM', 
+                                'PValue', '-Log10(FDR)', 'F']
 
-                #with col3:
-                st.subheader('Gene DE Table')
-                gene_cols = ['gene', 'logFC', 'FDR', 'logCPM', 
-                            'PValue', '-Log10(FDR)', 'F']
+                    sig_df = plot_gene_df[plot_gene_df['Significant']].sort_values(by='FDR')
+                    st.dataframe(sig_df[gene_cols].style.format({"FDR": "{:.2E}", "PValue": "{:.2E}"}))
+                    csv = convert_df(sig_df[gene_cols])
 
-                sig_df = plot_gene_df[plot_gene_df['Significant']].sort_values(by='FDR')
-                st.dataframe(sig_df[gene_cols].style.format({"FDR": "{:.2E}", "PValue": "{:.2E}"}))
-                csv = convert_df(sig_df[gene_cols])
+                    st.download_button(
+                        "Download Table",
+                        csv,
+                        f"gene_{edger_key}.csv",
+                        "text/csv",
+                        key='download-csv-gene'
+                    )
+                
+                with col3:
+                    st.subheader('Gene specific data')
 
-                st.download_button(
-                    "Download Table",
-                    csv,
-                    f"gene_{edger_key}.csv",
-                    "text/csv",
-                    key='download-csv-gene'
-                )
+                    cpm_df = cpm_dfs[cell_type]
+                    genes = list(cpm_df.index)
+                    genes.append('')
+
+                    select_gene_df = select_gene_df[select_gene_df['Significant']]
+
+                    if selected_points:
+                        gene = select_gene_df.iloc[selected_points[0]["pointIndex"]]['gene']
+                    else:
+                        gene = ''
+
+                    selected_gene = st.selectbox(
+                        'Select a gene',
+                        genes, index=genes.index(gene),
+                    )
+
+                    c1, c2 = contrast.split(' - ')
+
+                    if selected_gene != '':
+                        st.markdown('#### Boxplot')
+
+                        ax1 = plotting.plot_gene_boxplot(cpm_df, selected_gene, cell_type, (c1, c2))
+                        st.pyplot(ax1)
+
+                        st.markdown('#### UMAP projection')
+
+
+                        samples1 = [f'{c1}_{i}' for i in range(1, 4)]
+                        samples2 = [f'{c2}_{i}' for i in range(1, 4)]
+
+                        col4, col5 = st.columns(2)
+
+                        with col4:
+                            st.write(selected_gene, c1)
+                            ax2 = plotting.plot_static_umap(adata_dim, samples1, selected_gene)
+                            st.pyplot(ax2)
+
+                        with col5:
+                            st.write(selected_gene, c2)
+                            ax3 = plotting.plot_static_umap(adata_dim, samples2, selected_gene)
+                            st.pyplot(ax3)
+
 
                 try:
                     contrast_tuple = contrast.split(' - ')
@@ -314,33 +389,6 @@ with st.expander(label='Differential Expression', expanded=True):
                     st.plotly_chart(heatmap, theme="streamlit", use_container_width=True)
                 except:
                     None
-
-
-                if selected_points:
-                    st.subheader('UMAP projection of selected gene')
-                    
-                    select_gene_df = select_gene_df[select_gene_df['Significant']]
-
-                    gene = select_gene_df.iloc[selected_points[0]["pointIndex"]]['gene']
-
-                    c1, c2 = contrast.split('-')
-                    
-                    c1 = c1.replace('_', '-').strip()
-                    c2 = c2.replace('_', '-').strip()
-
-                    samples1 = [f'{c1}-{i}' for i in range(1, 4)]
-                    samples2 = [f'{c2}-{i}' for i in range(1, 4)]
-                    col4, col5 = st.columns(2)
-
-                    with col4:
-                        st.write(gene, c1)
-                        ax1 = plotting.plot_static_umap(adata_dim, samples1, gene)
-                        st.pyplot(ax1)
-
-                    with col5:
-                        st.write(gene, c2)
-                        ax2 = plotting.plot_static_umap(adata_dim, samples2, gene)
-                        st.pyplot(ax2)
 
                 string_button = st.button('Generate STRING network diagrams')
 
@@ -368,14 +416,12 @@ with st.expander(label='Differential Expression', expanded=True):
 
                 col9, col10 = st.columns(2)
 
-                #with col9:
                 st.subheader('Pathway Volcano Plot')
                 fig = plotting.plot_pathway_volcano(plot_gsva_df)
-                #fig.update_layout(width=1000)
                 st.plotly_chart(fig, use_container_width=True)
                 #selected_pathway = plotly_events(fig, select_event=True)#, override_width="100%")
                 #st.write(selected_pathway)
-                #with col10:
+
                 st.subheader('Pathway DE Table')
                 pathway_cols = ['Pathway', 'FDR', 'leading_edge', 'DE Genes In Pathway', 
                                 'Total Genes In Pathway', '-Log10(FDR)', 'logFC', 'msigdbURL']
@@ -389,11 +435,9 @@ with st.expander(label='Differential Expression', expanded=True):
                     "text/csv",
                     key='download-csv-pathway'
                 )
-
             
             with pathway_ora_tab:
                 
-
                 colx, coly = st.columns(2)
                 col11, col12 = st.columns(2)
 
@@ -424,7 +468,7 @@ with st.expander(label='Differential Expression', expanded=True):
                                             c='FDR p-value', scale=scale_param, return_fig=True)
                         ax.set_size_inches((5, 8))
 
-                        st.pyplot(ax, use_container_width=True)
+                        st.pyplot(ax, use_container_width=True, clear_figure=True)
 
                     with col12:
                         st.dataframe(top_path_df.style.format({"FDR": "{:.2E}"}))
@@ -439,7 +483,6 @@ with st.expander(label='Differential Expression', expanded=True):
 
         else:
             st.write('Not enough cells to perform differential analysis.')
-
 
 with st.expander(label='Differential Comparison', expanded=True):
 
@@ -461,7 +504,6 @@ with st.expander(label='Differential Comparison', expanded=True):
 
     with st.container():
         if contrast1 != 'None - None' and contrast2 != 'None - None':
-            #gencode_map = load_gencode_map()
             
             tab3, tab4 = st.tabs(["Genes", "Pathways"])
 
@@ -475,17 +517,33 @@ with st.expander(label='Differential Comparison', expanded=True):
                 st.plotly_chart(scatter_gene, use_container_width=True)
                 #selected_gene = plotly_events(scatter_gene, override_height=1000)
 
-                col_map = {col: "{:.2E}" for col in scatter_gene_df.columns if col[0:3] == 'FDR'}
+                col15, col16 = st.columns(2)
 
-                st.dataframe(scatter_gene_df.style.format(col_map))
-                csv = convert_df(scatter_gene_df)
-                st.download_button(
-                        "Download Table",
-                        csv,
-                        f"genes-diff_{contrast1}.csv",
-                        "text/csv",
-                        key='download-csv-diff-gene'
-                )
+                with col15:
+                    col_map = {col: "{:.2E}" for col in scatter_gene_df.columns if col[0:3] == 'FDR'}
+
+                    st.dataframe(scatter_gene_df.style.format(col_map))
+                    csv = convert_df(scatter_gene_df)
+                    st.download_button(
+                            "Download Table",
+                            csv,
+                            f"genes-diff_{contrast1}.csv",
+                            "text/csv",
+                            key='download-csv-diff-gene'
+                    )
+                
+                with col16:
+                    cpm_df = cpm_dfs[cell_type]
+                    genes = list(cpm_df.index)
+
+                    selected_contrast_gene = st.selectbox(
+                        'Select a gene',
+                        genes,  key='contrast_gene'
+                    )
+
+                    if selected_contrast_gene:
+                        fig_contrast_gene = plotting.plot_gene_boxplot(cpm_df, selected_contrast_gene, cell_type)
+                        st.pyplot(fig_contrast_gene, clear_figure=True)
                 
             with tab4:
 

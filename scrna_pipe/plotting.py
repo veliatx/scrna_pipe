@@ -2,6 +2,7 @@ import requests
 import numpy as np
 import pandas as pd
 import scanpy as sc
+import seaborn as sns
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -160,8 +161,6 @@ def plot_diff_scatter(top_dfs, contrast_map, cell_type, dataset_abbr, contrast1,
     treatment = contrast1.split('-')[0].strip()
     control = contrast2.split('-')[0].strip()
 
-    print(treatment, control)
-
     if diff_type == 'gene':
         df1[f'Significant'] = df1.apply(lambda x: x.FDR < .05 and np.abs(x.logFC) > 1, axis=1)
         df2[f'Significant'] = df2.apply(lambda x: x.FDR < .05 and np.abs(x.logFC) > 1, axis=1)
@@ -200,7 +199,7 @@ def plot_umap(plot_df, color_map, title):
     """
     """
     fig = px.scatter(plot_df, x=0, y=1, opacity=0.5,
-                    color="cell_type", color_discrete_map=color_map,
+                    color="cell_type_display", color_discrete_map=color_map,
                     labels={
                         "0": "UMAP 2",
                         "1": "UMAP 1",
@@ -211,37 +210,26 @@ def plot_umap(plot_df, color_map, title):
     return fig
 
 
-def overview_count_table(contrast_tuples, gene_de_dfs, dataset_name):
+def plot_gene_boxplot(cpm_df, gene, cell_type, contrast=None):
     """
     """
-    all_contrasts = [f'{x[0]}-{x[1]}' for x in contrast_tuples]
-    gene_contrasts = [x for x in list(gene_de_dfs.keys()) if any([c in x for c in all_contrasts])]
-    cell_types = [x.split('_')[-1] for x in gene_contrasts]
+    plot_df = pd.DataFrame(cpm_df.loc[gene])
 
-    count_dict = {}
+    plot_df = np.log2(plot_df)
+    plot_df.replace([np.inf, -np.inf, np.nan], .5, inplace=True)
 
-    print(all_contrasts)
-    print(gene_contrasts)
+    plot_df['label'] = plot_df.apply(lambda x: '_'.join(x.name.split('_')[1:-3]).rstrip('_'), axis=1)
+    
+    if contrast:
+        plot_df = plot_df[plot_df.apply(lambda x: any(c in x.name for c in contrast), axis=1)]
 
-    for contrast in all_contrasts:
-        if 'None' in contrast: continue
-        count_dict[contrast] = {}
-        for cell_type in cell_types:
-            key = f'{dataset_name}__edgeR__{contrast}__{cell_type}'
+    ax = sns.boxplot(data=plot_df, y=gene, x='label', palette='vlag')
+    sns.stripplot(data=plot_df, y=gene, x='label', ax=ax)
 
-            if key in gene_de_dfs.keys():
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=90, fontsize=14)
+    ax.set_ylabel(f'{gene} Expression - Log2(CPM)', fontsize=14)
+    ax.set_title(f'{gene} expression - {cell_type} 5hr', fontsize=16)
+    ax.figure.set_size_inches((8,6))
 
-                sig_df = gene_de_dfs[key]
-                x = sig_df[(sig_df['FDR'] < .05) &
-                           (np.abs(sig_df['logFC']) > 1) &
-                           (sig_df['logCPM'] > 5)]
-                up_cnt = x[x['logFC'] > 0].shape[0]
-                dwn_cnt = x[x['logFC'] < 0].shape[0]
-                count_dict[contrast][(cell_type, 'Up')] = up_cnt
-                count_dict[contrast][(cell_type, 'Down')] = dwn_cnt
-
-    df = pd.DataFrame(count_dict).T
-    df = df.astype(float)
-
-    return df
+    return ax.figure
 
