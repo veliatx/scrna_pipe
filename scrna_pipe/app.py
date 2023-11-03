@@ -67,9 +67,9 @@ adata_paths = {
     #'PBMC - plate 1': output_dir.joinpath('analysis_plate_1', 'PBMC_coarse.h5ad'),
     #'PBMC 24hr': output_dir.joinpath('analysis', '24hr_coarse.h5ad'),
     #'PBMC 5hr - plate 2': output_dir.joinpath('analysis_plate_2', '5hr_coarse_subset.h5ad'),
-    'PBMC 5hr R848 - aggregate': output_dir_plate3.joinpath('analysis', '5hr_pbmc_R848_scvi'),
-    'PBMC 24hr R848 - aggregate': output_dir_plate3.joinpath('analysis', '24hr_pbmc_R848_scvi'),
-    'PBMC 5hr PAM3 - aggregate': output_dir_plate3.joinpath('analysis', '5hr_pbmc_PAM3_scvi'),
+    'PBMC 5hr R848 - aggregate': output_dir.joinpath('analysis_plate_3', '5hr_pbmc_R848_scvi'),
+    'PBMC 24hr R848 - aggregate': output_dir.joinpath('analysis_plate_3', '24hr_pbmc_R848_scvi'),
+    'PBMC 5hr PAM3 - aggregate': output_dir.joinpath('analysis_plate_3', '5hr_pbmc_PAM3_scvi'),
 
     #'24hr': output_dir.joinpath('analysis', '24hr_coarse.h5ad'),
 }
